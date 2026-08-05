@@ -30,12 +30,12 @@ input string InpSymbolsCsv                 = "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD
 
 input group "=== Risk ==="
 input double InpRiskPercentPerTrade        = 1.0;   // % Equity Risiko pro Trade
-input double InpMaxPortfolioRiskPercent    = 4.0;   // Brutto-Risikobudget-Cap (3-5% Korridor)
+input double InpMaxPortfolioRiskPercent    = 8.0;   // Brutto-Risikobudget-Cap (Eigenkapital-Setup; Schutz vor Ueberhebeln)
 input double InpMaxLotPerTrade             = 5.0;   // hartes Lot-Cap (Schutz gegen Lot-Explosion)
 input double InpCommissionPerLotRoundTurn  = 7.0;   // Kontowaehrung/1.0 Lot Round-Turn (Raw-Konto)
 input double InpSlippageBufferPips         = 0.3;   // Sicherheitspuffer fuer Friktionsschaetzung
 input double InpMinSLFrictionMultiple      = 15.0;  // SL-Untergrenze = Multiple x Friktion
-input double InpDailySoftPauseLossPercent  = 3.0;   // Tagesverlust-Schwelle: Soft-Pause neuer Entries
+input double InpDailySoftPauseLossPercent  = 8.0;   // Tagesverlust-Schwelle: Soft-Pause neuer Entries
 
 input group "=== Session / Force-Close ==="
 // Alle Uhrzeiten in GMT. Der Server-GMT-Offset (IC Markets: GMT+3 Sommer,
@@ -92,6 +92,12 @@ SSessionBreakoutState g_sbState[];
 SDonchianState        g_dcState[];
 SMeanReversionState   g_mrState[];
 
+// Throttle-State fuer "Budget voll"-Logs: zuletzt geloggte M15-Bar je Symbol,
+// damit die Meldung hoechstens 1x pro M15-Bar statt pro Tick geschrieben wird.
+datetime           g_lastBudgetLogSB[];
+datetime           g_lastBudgetLogDC[];
+datetime           g_lastBudgetLogMR[];
+
 //+------------------------------------------------------------------+
 //| Zerlegt InpSymbolsCsv in g_symbols[] und validiert jedes Symbol  |
 //| gegen den Market-Watch (SymbolSelect). Ungueltige Symbole werden |
@@ -100,7 +106,18 @@ SMeanReversionState   g_mrState[];
 bool InitSymbols()
   {
    string raw[];
-   int n = StringSplit(InpSymbolsCsv, ',', raw);
+   // Im Strategy-Tester nur das gewaehlte Chart-Symbol handeln, damit der
+   // Symbol-Dropdown des Testers ueber das gehandelte Symbol steuert und ein
+   // echter Einzelsymbol-Test moeglich ist. Live: volle CSV-Liste wie bisher.
+   if(MQLInfoInteger(MQL_TESTER))
+     {
+      ArrayResize(raw, 1);
+      raw[0] = _Symbol;
+      PrintFormat("InitSymbols: Tester erkannt - auf Einzelsymbol %s reduziert (InpSymbolsCsv ignoriert).",
+                  _Symbol);
+     }
+
+   int n = MQLInfoInteger(MQL_TESTER) ? 1 : StringSplit(InpSymbolsCsv, ',', raw);
 
    ArrayResize(g_symbols, 0);
    for(int i = 0; i < n; i++)
@@ -152,6 +169,13 @@ int OnInit()
       g_sbState[i].rangeValid   = false;
       g_sbState[i].lastTradeDay = 0;
      }
+
+   ArrayResize(g_lastBudgetLogSB, g_numSymbols);
+   ArrayResize(g_lastBudgetLogDC, g_numSymbols);
+   ArrayResize(g_lastBudgetLogMR, g_numSymbols);
+   ArrayInitialize(g_lastBudgetLogSB, 0);
+   ArrayInitialize(g_lastBudgetLogDC, 0);
+   ArrayInitialize(g_lastBudgetLogMR, 0);
 
    g_ddState.currentDay     = 0;
    g_ddState.dayStartEquity = 0.0;
@@ -236,7 +260,12 @@ void ProcessSessionBreakout(const int symbolIndex, const string symbol, const do
    if(!CanOpenNewPosition(g_positions, g_symbols, equity, tradeRiskPercent,
                           InpMaxPortfolioRiskPercent, pendingRiskPercent))
      {
-      PrintFormat("PortfolioRiskGuard: SessionBreakout-Signal %s uebersprungen (Budget voll).", symbol);
+      datetime bar = iTime(symbol, PERIOD_M15, 0);
+      if(g_lastBudgetLogSB[symbolIndex] != bar)
+        {
+         PrintFormat("PortfolioRiskGuard: SessionBreakout-Signal %s uebersprungen (Budget voll).", symbol);
+         g_lastBudgetLogSB[symbolIndex] = bar;
+        }
       return;
      }
 
@@ -288,7 +317,12 @@ void ProcessDonchian(const int symbolIndex, const string symbol, const double eq
    if(!CanOpenNewPosition(g_positions, g_symbols, equity, tradeRiskPercent,
                           InpMaxPortfolioRiskPercent, pendingRiskPercent))
      {
-      PrintFormat("PortfolioRiskGuard: Donchian-Signal %s uebersprungen (Budget voll).", symbol);
+      datetime bar = iTime(symbol, PERIOD_M15, 0);
+      if(g_lastBudgetLogDC[symbolIndex] != bar)
+        {
+         PrintFormat("PortfolioRiskGuard: Donchian-Signal %s uebersprungen (Budget voll).", symbol);
+         g_lastBudgetLogDC[symbolIndex] = bar;
+        }
       return;
      }
 
@@ -340,7 +374,12 @@ void ProcessMeanReversion(const int symbolIndex, const string symbol, const doub
    if(!CanOpenNewPosition(g_positions, g_symbols, equity, tradeRiskPercent,
                           InpMaxPortfolioRiskPercent, pendingRiskPercent))
      {
-      PrintFormat("PortfolioRiskGuard: MeanReversion-Signal %s uebersprungen (Budget voll).", symbol);
+      datetime bar = iTime(symbol, PERIOD_M15, 0);
+      if(g_lastBudgetLogMR[symbolIndex] != bar)
+        {
+         PrintFormat("PortfolioRiskGuard: MeanReversion-Signal %s uebersprungen (Budget voll).", symbol);
+         g_lastBudgetLogMR[symbolIndex] = bar;
+        }
       return;
      }
 
