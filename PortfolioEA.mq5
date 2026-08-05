@@ -27,6 +27,11 @@
 //====================================================================
 input group "=== Symbole ==="
 input string InpSymbolsCsv                 = "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD";
+// Standard: im Tester nur das Dropdown-Symbol (100% echte Ticks, sauberer
+// Einzeltest). true = im Tester die volle CSV-Liste handeln (Portfolio-Lauf).
+// ACHTUNG: Nur das Dropdown-Symbol bekommt echte Ticks, die uebrigen Symbole
+// nur interpolierte -> Spread/Slippage/Timing dort ungenau.
+input bool   InpTesterForceAllSymbols      = false;  // Tester: alle CSV-Symbole statt nur Dropdown-Symbol
 
 input group "=== Risk ==="
 input double InpRiskPercentPerTrade        = 1.0;   // % Equity Risiko pro Trade
@@ -106,18 +111,24 @@ datetime           g_lastBudgetLogMR[];
 bool InitSymbols()
   {
    string raw[];
-   // Im Strategy-Tester nur das gewaehlte Chart-Symbol handeln, damit der
-   // Symbol-Dropdown des Testers ueber das gehandelte Symbol steuert und ein
-   // echter Einzelsymbol-Test moeglich ist. Live: volle CSV-Liste wie bisher.
-   if(MQLInfoInteger(MQL_TESTER))
+   // Im Strategy-Tester standardmaessig nur das gewaehlte Chart-Symbol handeln,
+   // damit der Symbol-Dropdown das gehandelte Symbol steuert und ein echter
+   // Einzelsymbol-Test moeglich ist. Mit InpTesterForceAllSymbols=true wird
+   // stattdessen die volle CSV-Liste gehandelt (Portfolio-Lauf). Live: immer
+   // volle CSV-Liste wie bisher.
+   bool testerSingleSymbol = MQLInfoInteger(MQL_TESTER) && !InpTesterForceAllSymbols;
+   if(testerSingleSymbol)
      {
       ArrayResize(raw, 1);
       raw[0] = _Symbol;
       PrintFormat("InitSymbols: Tester erkannt - auf Einzelsymbol %s reduziert (InpSymbolsCsv ignoriert).",
                   _Symbol);
      }
+   else if(MQLInfoInteger(MQL_TESTER))
+      Print("InitSymbols: Tester-Portfolio-Modus (InpTesterForceAllSymbols=true) - volle CSV-Liste. "
+            "ACHTUNG: nur das Dropdown-Symbol hat echte Ticks, uebrige Symbole nur interpoliert.");
 
-   int n = MQLInfoInteger(MQL_TESTER) ? 1 : StringSplit(InpSymbolsCsv, ',', raw);
+   int n = testerSingleSymbol ? 1 : StringSplit(InpSymbolsCsv, ',', raw);
 
    ArrayResize(g_symbols, 0);
    for(int i = 0; i < n; i++)
