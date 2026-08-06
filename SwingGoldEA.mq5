@@ -48,7 +48,8 @@ input int    InpMaxSpreadPoints  = 50;      // Friktionsgrenze (Points)
 
 input group "=== Risiko ==="
 input double InpRiskPercent        = 1.0;   // knowledge.md 4: 1-2%
-input double InpMaxLotPerTrade     = 1.0;   // harte Kappung
+input double InpMaxLotPerTrade     = 1.0;   // Lot-Kappung bei InpBaseEquity
+input double InpBaseEquity         = 3000.0; // Referenz-Equity: MaxLot skaliert mit equity/base
 input double InpFrictionSLMult     = 15.0;  // Mindest-Stop vs. Friktion
 input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
@@ -153,7 +154,7 @@ int OnInit(void)
 
    g_signalDipBuy.Configure(InpAllowShort, InpSwingLookback, InpAtrStopMult, InpArmedExpiryBars, g_magicDipBuy);
    g_filterStack.Configure(_Symbol, InpUseSpreadFilter, InpMaxSpreadPoints);
-   g_riskManager.Configure(_Symbol, InpRiskPercent, InpMaxLotPerTrade, InpFrictionSLMult, InpSlippageBufferPts);
+   g_riskManager.Configure(_Symbol, InpRiskPercent, InpMaxLotPerTrade, InpBaseEquity, InpFrictionSLMult, InpSlippageBufferPts);
    g_positionTracker.Configure(_Symbol, g_magicDipBuy);
    g_drawdownGuard.Configure(_Symbol, InpMagicBase, InpMaxDailyLossPct, InpMaxTotalDDPct);
    g_tradeExecution.Configure(_Symbol, g_magicDipBuy, g_symbolResolver.StopsLevelPoints(),

@@ -22,6 +22,7 @@ private:
    string            m_symbol;
    double            m_riskPercent;
    double            m_maxLotPerTrade;
+   double            m_baseEquity;
    double            m_frictionSLMult;
    double            m_slippageBufferPts;
 
@@ -36,14 +37,15 @@ private:
 public:
                      CRiskManager(void):
                         m_symbol(""), m_riskPercent(1.0), m_maxLotPerTrade(1.0),
-                        m_frictionSLMult(15.0), m_slippageBufferPts(20.0) {}
+                        m_baseEquity(3000.0), m_frictionSLMult(15.0), m_slippageBufferPts(20.0) {}
 
    void              Configure(const string symbol, const double riskPercent, const double maxLotPerTrade,
-                               const double frictionSLMult, const double slippageBufferPts)
+                               const double baseEquity, const double frictionSLMult, const double slippageBufferPts)
      {
       m_symbol             = symbol;
       m_riskPercent        = riskPercent;
       m_maxLotPerTrade     = maxLotPerTrade;
+      m_baseEquity         = (baseEquity > 0.0) ? baseEquity : 3000.0;
       m_frictionSLMult     = frictionSLMult;
       m_slippageBufferPts  = slippageBufferPts;
      }
@@ -106,8 +108,14 @@ public:
 
       double lots = riskMoney / moneyPerLot;
 
-      if(m_maxLotPerTrade > 0.0 && lots > m_maxLotPerTrade)
-         lots = m_maxLotPerTrade;
+      //--- Lot-Kappung skaliert proportional zur Equity: bei InpBaseEquity gilt InpMaxLotPerTrade,
+      //--- darueber wächst das Limit linear mit (equity / baseEquity).
+      if(m_maxLotPerTrade > 0.0)
+        {
+         double dynamicMaxLot = m_maxLotPerTrade * MathMax(1.0, equity / m_baseEquity);
+         if(lots > dynamicMaxLot)
+            lots = dynamicMaxLot;
+        }
 
       if(volumeStep > 0.0)
          lots = MathFloor(lots / volumeStep + 1e-8) * volumeStep;
