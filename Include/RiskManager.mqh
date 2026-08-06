@@ -108,8 +108,8 @@ public:
 
       double lots = riskMoney / moneyPerLot;
 
-      //--- Lot-Kappung skaliert proportional zur Equity: bei InpBaseEquity gilt InpMaxLotPerTrade,
-      //--- darueber wächst das Limit linear mit (equity / baseEquity).
+      //--- Lot-Kappung skaliert proportional zur Equity: bei Start-Equity gilt InpMaxLotPerTrade,
+      //--- darueber waechst das Limit linear mit (aktuelle equity / Start-Equity).
       if(m_maxLotPerTrade > 0.0)
         {
          double dynamicMaxLot = m_maxLotPerTrade * MathMax(1.0, equity / m_baseEquity);
