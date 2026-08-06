@@ -105,8 +105,7 @@ public:
            }
 
          uint retcode   = m_trade.ResultRetcode();
-         bool retryable = (retcode == TRADE_RETCODE_REQUOTE || retcode == TRADE_RETCODE_REQUEUE ||
-                          retcode == TRADE_RETCODE_PRICE_CHANGED);
+         bool retryable = (retcode == TRADE_RETCODE_REQUOTE || retcode == TRADE_RETCODE_PRICE_CHANGED);
 
          PrintFormat("TradeExecution: SendMarket Versuch %d/%d fehlgeschlagen, retcode=%u%s",
                      attempt + 1, m_maxRetries + 1, retcode, retryable ? " - retry" : " - Abbruch");
