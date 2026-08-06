@@ -36,11 +36,11 @@
 input group "=== Strategie (SignalDipBuy) ==="
 input bool   InpAllowShort       = false;   // Asymmetrie-Hypothese testbar machen (ea.md 2.2)
 input int    InpEmaSlow          = 200;     // D1-Trendfilter
-input int    InpEmaMid           = 50;      // [OPT] Ruecksetzer-Zone
-input int    InpSwingLookback    = 5;       // Fraktal-Breite fuer Swing-Erkennung
+input int    InpEmaMid           = 150;     // [OPT] Ruecksetzer-Zone
+input int    InpSwingLookback    = 3;       // Fraktal-Breite fuer Swing-Erkennung
 input int    InpAtrPeriod        = 14;      // ATR-Periode (D1)
-input double InpAtrStopMult      = 2.0;     // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
-input int    InpArmedExpiryBars  = 10;      // Verfall eines Setups (D1-Bars)
+input double InpAtrStopMult      = 1.5;     // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
+input int    InpArmedExpiryBars  = 25;      // Verfall eines Setups (D1-Bars)
 
 input group "=== Filter (FilterStack) ==="
 input bool   InpUseSpreadFilter  = true;    // H-Test
