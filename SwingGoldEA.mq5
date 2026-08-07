@@ -490,10 +490,8 @@ void OnTick(void)
    //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
    for(int s = 0; s < 2; s++)
      {
-      CStrategySlot &slot = g_slots[s];
-
-      ENUM_TIMEFRAMES trigTf = slot.module.TriggerTimeframe();
-      ENUM_TIMEFRAMES atrTf  = slot.module.AtrTimeframe();
+      ENUM_TIMEFRAMES trigTf = g_slots[s].module.TriggerTimeframe();
+      ENUM_TIMEFRAMES atrTf  = g_slots[s].module.AtrTimeframe();
 
       //--- Daten-Verfuegbarkeit fuer diesen Slot pruefen
       bool dataOk = true;
@@ -509,33 +507,33 @@ void OnTick(void)
 
       //--- Position vorhanden? -> Management (AUCH bei disabled Modul, Hazard H2/plan Anforderung)
       ulong ticket;
-      bool  hasPosition = slot.tracker.FindOwnPosition(ticket);
+      bool  hasPosition = g_slots[s].tracker.FindOwnPosition(ticket);
 
       if(hasPosition)
         {
          //--- State-Machine synchron halten
-         if(slot.module.GetState() != ST_IN_POSITION)
+         if(g_slots[s].module.GetState() != ST_IN_POSITION)
            {
             ENUM_POSITION_TYPE posType;
-            if(slot.tracker.GetType(ticket, posType))
-               slot.module.SyncInPosition(posType == POSITION_TYPE_BUY ? SIGNAL_LONG : SIGNAL_SHORT);
+            if(g_slots[s].tracker.GetType(ticket, posType))
+               g_slots[s].module.SyncInPosition(posType == POSITION_TYPE_BUY ? SIGNAL_LONG : SIGNAL_SHORT);
             else
                PrintFormat("SwingGoldEA: Positionsrichtung fuer Slot %d unlesbar - Sync uebersprungen.", s);
            }
 
          //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing
-         slot.manager.Manage(ticket, slot.module.GetDir(), slot.module.GetTargetPrice(),
-                             g_marketData, slot.tracker, slot.exec);
+         g_slots[s].manager.Manage(ticket, g_slots[s].module.GetDir(), g_slots[s].module.GetTargetPrice(),
+                                   g_marketData, g_slots[s].tracker, g_slots[s].exec);
 
          continue; // kein neuer Entry solange Position offen
         }
 
       //--- Position gerade extern geschlossen?
-      if(slot.module.GetState() == ST_IN_POSITION)
-         slot.module.NotifyPositionClosed();
+      if(g_slots[s].module.GetState() == ST_IN_POSITION)
+         g_slots[s].module.NotifyPositionClosed();
 
       //--- Neuer Entry nur wenn Modul enabled UND neue Bar auf dem Trigger-TF
-      if(!slot.enabled)
+      if(!g_slots[s].enabled)
          continue;
 
       bool newTriggerBar = (trigTf == PERIOD_H4)  ? g_marketData.IsNewH4Bar()
@@ -550,12 +548,12 @@ void OnTick(void)
          continue;
 
       SignalProposal proposal;
-      bool triggered = slot.module.OnBar(g_marketData, proposal);
+      bool triggered = g_slots[s].module.OnBar(g_marketData, proposal);
 
       if(!triggered || !proposal.valid)
          continue;
 
-      EvaluateAndExecute(slot, proposal);
+      EvaluateAndExecute(g_slots[s], proposal);
      }
   }
 //+------------------------------------------------------------------+
