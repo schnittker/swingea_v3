@@ -47,11 +47,11 @@ input bool   InpUseOverlapModule   = false;  // Overlap-Strategie (H4-Bias/M15) 
 input group "=== Strategie DipBuy ==="
 input bool   InpAllowShort         = false;  // Asymmetrie-Hypothese testbar (ea.md 2.2)
 input int    InpEmaSlow            = 200;    // D1-Trendfilter
-input int    InpEmaMid             = 150;    // [OPT] Ruecksetzer-Zone
-input int    InpSwingLookback      = 3;      // Fraktal-Breite Swing-Erkennung
+input int    InpEmaMid             = 100;    // [OPT] Ruecksetzer-Zone
+input int    InpSwingLookback      = 4;      // Fraktal-Breite Swing-Erkennung
 input int    InpAtrPeriod          = 14;     // ATR-Periode (D1)
-input double InpAtrStopMult        = 1.5;    // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
-input int    InpArmedExpiryBars    = 25;     // Verfall eines Setups (D1-Bars)
+input double InpAtrStopMult        = 2.25;   // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
+input int    InpArmedExpiryBars    = 10;     // Verfall eines Setups (D1-Bars)
 
 input group "=== Strategie Overlap ==="
 input bool   InpOvAllowShort       = false;  // Short fuer Overlap (Asymmetrie-Hypothese)
@@ -92,7 +92,7 @@ input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
 input double InpMaxTotalDDPct      = 20.0;  // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
-input double InpTrailAtrMult       = 2.5;   // Trailing-Abstand (DipBuy, ATR-D1)
+input double InpTrailAtrMult       = 3.5;   // Trailing-Abstand (DipBuy, ATR-D1)
 
 input group "=== Infrastruktur ==="
 input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2
