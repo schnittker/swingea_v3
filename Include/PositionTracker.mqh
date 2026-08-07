@@ -5,6 +5,12 @@
 //|   Read wird explizit PositionSelectByTicket() aufgerufen          |
 //|   (ea.md 7.5-Stil). Das Teilgewinn-Flag wird per GlobalVariable  |
 //|   persistiert, da MQL5 keine Custom-Flags an Positionen haengt.  |
+//|                                                                   |
+//|   WICHTIG (Hazard H12): PositionSelectByTicket() mutiert den     |
+//|   globalen Selektionszustand. Bei zwei Slots verschraenken sich  |
+//|   die Aufrufe. DESHALB ruft JEDER Getter PositionSelectByTicket  |
+//|   selbst auf — diese Re-Select-Disziplin darf NICHT "optimiert"  |
+//|   werden (sonst liest ein Getter die Position des anderen Slots).|
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_POSITIONTRACKER_MQH__
 #define __SWINGGOLD_POSITIONTRACKER_MQH__

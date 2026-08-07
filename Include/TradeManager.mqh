@@ -22,6 +22,7 @@ private:
    double            m_volumeMin;
    double            m_volumeStep;
    int               m_stopsLevelPoints;
+   ENUM_TIMEFRAMES   m_atrTf;   // ATR vom Entry-TF (strategies.md Teil D "Fehler 1")
 
    //--- Teilschluss-Volumen auf VOLUME_STEP normiert. Gibt 0.0 zurueck,
    //--- wenn Teil- oder Restvolumen unter VOLUME_MIN faellt (dann lieber
@@ -58,10 +59,15 @@ private:
 public:
                      CTradeManager(void):
                         m_symbol(""), m_partialPct(50.0), m_trailAtrMult(2.5),
-                        m_volumeMin(0.01), m_volumeStep(0.01), m_stopsLevelPoints(0) {}
+                        m_volumeMin(0.01), m_volumeStep(0.01), m_stopsLevelPoints(0),
+                        m_atrTf(PERIOD_D1) {}
 
+   //--- atrTf: ATR-Timeframe passend zum Entry-TF des Moduls
+   //--- (strategies.md Teil D "Fehler 1": ATR muss vom Entry-TF kommen)
    void              Configure(const string symbol, const double partialPct, const double trailAtrMult,
-                               const double volumeMin, const double volumeStep, const int stopsLevelPoints)
+                               const double volumeMin, const double volumeStep,
+                               const int stopsLevelPoints,
+                               const ENUM_TIMEFRAMES atrTf = PERIOD_D1)
      {
       m_symbol           = symbol;
       m_partialPct       = partialPct;
@@ -69,6 +75,7 @@ public:
       m_volumeMin        = volumeMin;
       m_volumeStep       = volumeStep;
       m_stopsLevelPoints = stopsLevelPoints;
+      m_atrTf            = atrTf;
      }
 
    //+------------------------------------------------------------------+
@@ -85,7 +92,7 @@ public:
       if(!tracker.GetSL(ticket, currentSL))       return;
       if(!tracker.GetTP(ticket, currentTP))       return;
 
-      double atr          = md.GetAtrD1();
+      double atr          = md.GetAtr(m_atrTf); // ATR vom konfigurierten Entry-TF
       double currentPrice = (dir == SIGNAL_LONG) ? SymbolInfoDouble(m_symbol, SYMBOL_BID)
                                                   : SymbolInfoDouble(m_symbol, SYMBOL_ASK);
 

@@ -1,31 +1,37 @@
 //+------------------------------------------------------------------+
 //|                                                    SwingGoldEA.mq5 |
-//|   Struktureller Dip-Buy auf XAUUSD (D1-Bias/Setup, H4-Trigger).  |
-//|   Umsetzung von ea.md, Phase 0 (Infrastruktur) + Phase 1         |
-//|   (Baseline-Strategie, FilterStack nur Spread). Intermarket-      |
-//|   Filter, NewsGuard, Session-Logik etc. sind bewusst NICHT Teil  |
-//|   dieser Phase (siehe ea.md Abschnitt 9, Abbruchkriterium nach   |
-//|   Phase 2).                                                       |
+//|   Tier-1-EA: Struktureller Dip-Buy (D1/H4) + Overlap-Trendfolge  |
+//|   (H4-Bias/M15-Entry), beide in einem EA, einzeln abschaltbar.   |
 //|                                                                    |
-//|   Ausfuehrung ausschliesslich auf geschlossenen Bars (D1-Bias/    |
-//|   Setup, H4-Trigger). Long-only per Default (InpAllowShort=false),|
-//|   da preisunelastische Zentralbanknachfrage keinen Stop-Loss hat  |
-//|   (knowledge.md 5) - Shorts bleiben ueber InpAllowShort messbar.  |
+//|   Risiko wird ueber alle Strategien hinweg per ClusterRiskGuard   |
+//|   gemessen und begrenzt (strategies.md Teil F, ea.md 4.10).      |
 //|                                                                    |
-//|   ACHTUNG: Vor Echtgeld zwingend Out-of-Sample + Walk-Forward +   |
-//|   Forward-Test (siehe ea.md Abschnitt 8, Go-Live-Kette).          |
+//|   Ausfuehrung ausschliesslich auf geschlossenen Bars (D1-Bias/   |
+//|   Setup, H4-Trigger fuer DipBuy; M15-Trigger fuer Overlap).     |
+//|   PollNewBars() latcht die Bar-Flags einmal pro Tick, alle       |
+//|   Is*Bar()-Aufrufe sind danach nicht-mutierend (Bugfix).        |
+//|                                                                    |
+//|   Default: InpUseOverlapModule=false (Hazard H14: bestehende    |
+//|   .set-Dateien wuerden sonst still zum Zwei-Modul-Lauf).        |
+//|                                                                    |
+//|   ACHTUNG: Vor Echtgeld zwingend Out-of-Sample + Walk-Forward + |
+//|   Forward-Test (ea.md Abschnitt 8, Go-Live-Kette).             |
 //+------------------------------------------------------------------+
 #property copyright "swingea"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 
 #include "Include/Types.mqh"
 #include "Include/MagicNumbers.mqh"
 #include "Include/SymbolResolver.mqh"
+#include "Include/TimeContext.mqh"
 #include "Include/MarketData.mqh"
+#include "Include/SignalModuleBase.mqh"
 #include "Include/SignalDipBuy.mqh"
+#include "Include/SignalOverlapTrend.mqh"
 #include "Include/FilterStack.mqh"
 #include "Include/RiskManager.mqh"
+#include "Include/ClusterRiskGuard.mqh"
 #include "Include/PositionTracker.mqh"
 #include "Include/DrawdownGuard.mqh"
 #include "Include/TradeExecution.mqh"
@@ -33,57 +39,173 @@
 #include "Include/DecisionLog.mqh"
 
 //====================== INPUTS ====================================
-input group "=== Strategie (SignalDipBuy) ==="
-input bool   InpAllowShort       = false;   // Asymmetrie-Hypothese testbar machen (ea.md 2.2)
-input int    InpEmaSlow          = 200;     // D1-Trendfilter
-input int    InpEmaMid           = 150;     // [OPT] Ruecksetzer-Zone
-input int    InpSwingLookback    = 3;       // Fraktal-Breite fuer Swing-Erkennung
-input int    InpAtrPeriod        = 14;      // ATR-Periode (D1)
-input double InpAtrStopMult      = 1.5;     // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
-input int    InpArmedExpiryBars  = 25;      // Verfall eines Setups (D1-Bars)
 
-input group "=== Filter (FilterStack) ==="
-input bool   InpUseSpreadFilter  = true;    // H-Test
-input int    InpMaxSpreadPoints  = 50;      // Friktionsgrenze (Points)
+input group "=== Module ==="
+input bool   InpUseDipBuyModule    = true;   // DipBuy-Strategie (D1/H4) aktiv
+input bool   InpUseOverlapModule   = false;  // Overlap-Strategie (H4-Bias/M15) aktiv - Default false (Hazard H14)
 
-input group "=== Risiko ==="
-input double InpRiskPercent        = 1.0;   // knowledge.md 4: 1-2%
-input double InpMaxLotPerTrade     = 1.0;   // Lot-Kappung bei Start-Equity (skaliert automatisch)
+input group "=== Strategie DipBuy ==="
+input bool   InpAllowShort         = false;  // Asymmetrie-Hypothese testbar (ea.md 2.2)
+input int    InpEmaSlow            = 200;    // D1-Trendfilter
+input int    InpEmaMid             = 150;    // [OPT] Ruecksetzer-Zone
+input int    InpSwingLookback      = 3;      // Fraktal-Breite Swing-Erkennung
+input int    InpAtrPeriod          = 14;     // ATR-Periode (D1)
+input double InpAtrStopMult        = 1.5;    // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
+input int    InpArmedExpiryBars    = 25;     // Verfall eines Setups (D1-Bars)
+
+input group "=== Strategie Overlap ==="
+input bool   InpOvAllowShort       = false;  // Short fuer Overlap (Asymmetrie-Hypothese)
+input int    InpOvEmaFastH4        = 50;     // H4-Bias EMA Fast
+input int    InpOvEmaSlowH4        = 200;    // H4-Bias EMA Slow
+input int    InpOvPullbackEmaFast  = 20;     // M15-Zone EMA Fast
+input int    InpOvPullbackEmaSlow  = 50;     // M15-Zone EMA Slow
+input int    InpOvAtrPeriodM15     = 14;     // ATR-Periode M15
+input double InpOvAtrStopMult      = 1.75;   // [OPT] Stop-Abstand M15 (1.5-2.0)
+input int    InpOvSwingLookbackM15 = 3;      // Fraktal-Breite M15
+input int    InpOvZoneExpiryBars   = 8;      // Verfall (M15-Bars)
+input double InpOvTrailAtrMult     = 2.5;    // Trailing-Abstand (ATR-M15)
+
+input group "=== Zeit / Session ==="
+input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
+input bool   InpUseWeekdayFilter   = true;   // Montag/Freitag-Sperre (H-Test)
+input int    InpOverlapStartGmtHour = 12;    // Overlap-Fenster Start (GMT-Stunde, inkl.)
+input int    InpOverlapEndGmtHour  = 16;     // Overlap-Fenster Ende (GMT-Stunde, exkl.)
+input int    InpMondayStartGmtHour = 8;      // Montag: ab dieser GMT-Stunde erlaubt
+input int    InpFridayStopGmtHour  = 18;     // Freitag: ab dieser GMT-Stunde gesperrt
+input int    InpGmtOffsetWinter    = 2;      // Server-GMT-Offset Winter (ea.md 7.1)
+input int    InpGmtOffsetSummer    = 3;      // Server-GMT-Offset Sommer (ea.md 7.1)
+
+input group "=== Filter ==="
+input bool   InpUseSpreadFilter    = true;   // H-Test
+input int    InpMaxSpreadPoints    = 50;     // Friktionsgrenze (Points)
+
+input group "=== Risiko (uebergreifend) ==="
+input double InpRiskPctDipBuy      = 1.0;   // Risiko % je DipBuy-Trade (knowledge.md 4)
+input double InpRiskPctOverlap     = 1.0;   // Risiko % je Overlap-Trade
+input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies.md Teil F)
+input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
+input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
+input bool   InpClusterNoSLBlocks  = true;  // Position ohne SL blockiert neue Trades
+input double InpMaxLotPerTrade     = 1.0;   // Lot-Kappung
 input double InpFrictionSLMult     = 15.0;  // Mindest-Stop vs. Friktion
 input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
 input double InpMaxTotalDDPct      = 20.0;  // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
-input double InpTrailAtrMult       = 2.5;   // Trailing-Abstand
+input double InpTrailAtrMult       = 2.5;   // Trailing-Abstand (DipBuy, ATR-D1)
 
 input group "=== Infrastruktur ==="
-input int    InpMagicBase       = 770000;   // Basis, Module +1/+2/+3 (aktuell nur DipBuy)
-input bool   InpLogDecisions    = true;     // Telemetrie (DecisionLog.csv)
+input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2
+input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
+
+//====================== SLOT-KLASSE ===============================
+//
+// Bündelt alles Modulspezifische. Als class (nie struct), da MQL5
+// keinen operator= fuer Klassen generiert und ein bitweises Kopieren
+// das eingebettete CTrade in CTradeExecution duplizieren wuerde
+// (Hazard H3). Stets per &-Referenz uebergeben, nie kopieren.
+//
+class CStrategySlot
+  {
+public:
+   bool               enabled;
+   int                magic;
+   double             riskPct;
+   double             trailAtrMult;
+   CSignalModuleBase *module;     // heap-alloziert, Release() pflicht
+   CPositionTracker   tracker;
+   CTradeExecution    exec;
+   CTradeManager      manager;
+
+                     CStrategySlot(void): enabled(false), magic(0), riskPct(1.0),
+                        trailAtrMult(2.5), module(NULL) {}
+
+   //--- Gibt den heap-allozierten Modul-Zeiger frei. Fuer ALLE Slots
+   //--- in OnDeinit aufrufen (auch bei disabled, ea.md H2).
+   void              Release(void)
+     {
+      if(CheckPointer(module) == POINTER_DYNAMIC)
+        {
+         delete module;
+        }
+      module = NULL;
+     }
+  };
 
 //====================== GLOBALE OBJEKTE ============================
+CStrategySlot    g_slots[2];          // 0=DipBuy, 1=Overlap (feste Reihenfolge, Hazard H10)
 CSymbolResolver  g_symbolResolver;
+CTimeContext     g_timeContext;
 CMarketData      g_marketData;
-CSignalDipBuy    g_signalDipBuy;
 CFilterStack     g_filterStack;
 CRiskManager     g_riskManager;
-CPositionTracker g_positionTracker;
+CClusterRiskGuard g_clusterRiskGuard;
 CDrawdownGuard   g_drawdownGuard;
-CTradeExecution  g_tradeExecution;
-CTradeManager    g_tradeManager;
 CDecisionLog     g_decisionLog;
 
-int              g_magicDipBuy = 0;
+//+------------------------------------------------------------------+
+//| Prueft, ob eine eigene Position mit gegebener Magic existiert.   |
+//| Wird VOR MarketData.Init() benoetigt, um TF-Flags korrekt zu    |
+//| setzen (ein disabled Modul mit offener Position braucht seinen  |
+//| ATR-Timeframe, ea.md H8).                                        |
+//+------------------------------------------------------------------+
+bool PositionExistsForMagic(const int magic)
+  {
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((int)PositionGetInteger(POSITION_MAGIC) != magic) continue;
+      return true;
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Synchronisiert einen Slot aus der tatsaechlichen Broker-Position.|
+//| Verallgemeinert SwingGoldEA v1 :169-181.                        |
+//+------------------------------------------------------------------+
+void SyncSlotFromBroker(CStrategySlot &slot)
+  {
+   ulong ticket;
+   if(!slot.tracker.FindOwnPosition(ticket))
+      return;
+
+   ENUM_POSITION_TYPE posType;
+   if(!slot.tracker.GetType(ticket, posType))
+     {
+      PrintFormat("SwingGoldEA: Positionsrichtung fuer Slot '%s' nicht lesbar - Sync uebersprungen.",
+                  slot.module.Name());
+      return;
+     }
+
+   ENUM_SIGNAL_DIR dir = (posType == POSITION_TYPE_BUY) ? SIGNAL_LONG : SIGNAL_SHORT;
+   slot.module.SyncInPosition(dir);
+   PrintFormat("SwingGoldEA: Slot '%s' SyncInPosition dir=%d (Restart-Resilienz, ea.md 5).",
+               slot.module.Name(), (int)dir);
+  }
 
 //+------------------------------------------------------------------+
 //| Fuehrt eine gefeuerte SignalProposal durch FilterStack,          |
-//| DrawdownGuard, RiskManager und TradeExecution. Schreibt in jedem |
-//| Fall (angenommen oder abgelehnt) eine DecisionLog-Zeile.         |
+//| DrawdownGuard, ClusterRiskGuard, RiskManager und TradeExecution. |
+//| Schreibt in jedem Fall eine DecisionLog-Zeile.                  |
 //+------------------------------------------------------------------+
-void EvaluateAndExecute(SignalProposal &proposal)
+void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
   {
-   string rejectReason = "";
-   bool   accepted     = g_filterStack.Evaluate(proposal, rejectReason);
+   string rejectReason  = "";
+   double clusterRiskPct = 0.0;
+   bool   accepted       = true;
 
+   //--- 1. FilterStack (Spread + Session/Wochentag wenn session-restricted)
+   accepted = g_filterStack.Evaluate(proposal,
+                                     slot.module.SessionRestricted(),
+                                     g_timeContext,
+                                     rejectReason);
+
+   //--- 2. DrawdownGuard (kontoweit)
    if(accepted)
      {
       string ddReason;
@@ -94,6 +216,7 @@ void EvaluateAndExecute(SignalProposal &proposal)
         }
      }
 
+   //--- 3. Sizing (benoetigt fuer ClusterRiskGuard-Deckel-Pruefung)
    double refPrice  = 0.0;
    double stopPrice = proposal.stopPrice;
    double lots      = 0.0;
@@ -101,11 +224,16 @@ void EvaluateAndExecute(SignalProposal &proposal)
    if(accepted)
      {
       refPrice = (proposal.dir == SIGNAL_LONG) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
-                                                : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+                                               : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-      g_riskManager.EnforceMinStopDistance(proposal.dir, refPrice, stopPrice, g_symbolResolver.StopsLevelPoints());
-      lots = g_riskManager.ComputeLots(refPrice, stopPrice, g_symbolResolver.VolumeMin(),
-                                       g_symbolResolver.VolumeMax(), g_symbolResolver.VolumeStep());
+      g_riskManager.EnforceMinStopDistance(proposal.dir, refPrice, stopPrice,
+                                           g_symbolResolver.StopsLevelPoints());
+
+      lots = g_riskManager.ComputeLots(refPrice, stopPrice,
+                                       g_symbolResolver.VolumeMin(),
+                                       g_symbolResolver.VolumeMax(),
+                                       g_symbolResolver.VolumeStep(),
+                                       slot.riskPct);
 
       if(lots <= 0.0)
         {
@@ -114,26 +242,52 @@ void EvaluateAndExecute(SignalProposal &proposal)
         }
      }
 
+   //--- 4. ClusterRiskGuard (uebgreifendes Risiko, ea.md 4.10)
+   if(accepted)
+     {
+      double equity      = AccountInfoDouble(ACCOUNT_EQUITY);
+      double newRiskMoney = 0.0;
+      if(equity > 0.0 && stopPrice != 0.0 && refPrice != 0.0)
+        {
+         double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+         double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+         if(tickSize > 0.0)
+            newRiskMoney = (tickValue / tickSize) * MathAbs(refPrice - stopPrice) * lots;
+        }
+
+      string clusterReason;
+      if(!g_clusterRiskGuard.AllowNewRisk(newRiskMoney, clusterRiskPct, clusterReason))
+        {
+         accepted     = false;
+         rejectReason = clusterReason;
+        }
+     }
+
+   //--- Log: Telemetrie (auch abgelehnte Trades, ea.md 4.12)
    long spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
 
    if(!accepted)
      {
-      g_decisionLog.Write("SignalDipBuy", proposal.dir, refPrice, stopPrice, proposal.targetPrice,
-                          proposal.atrAtSignal, spread, lots, false, rejectReason);
-      g_signalDipBuy.NotifyFilterVeto();
+      g_decisionLog.Write(slot.module.Name(), proposal.dir, refPrice, stopPrice,
+                          proposal.targetPrice, proposal.atrAtSignal, spread, lots,
+                          clusterRiskPct, false, rejectReason);
+      slot.module.NotifyFilterVeto();
       return;
      }
 
+   //--- 5. Order senden
    ulong dealTicket = 0;
-   bool  sent        = g_tradeExecution.SendMarket(proposal.dir, lots, stopPrice, 0.0, dealTicket);
+   bool  sent       = slot.exec.SendMarket(proposal.dir, lots, stopPrice, 0.0, dealTicket);
 
-   g_decisionLog.Write("SignalDipBuy", proposal.dir, refPrice, stopPrice, proposal.targetPrice,
-                       proposal.atrAtSignal, spread, lots, sent, sent ? "" : "TradeExecution fehlgeschlagen");
+   g_decisionLog.Write(slot.module.Name(), proposal.dir, refPrice, stopPrice,
+                       proposal.targetPrice, proposal.atrAtSignal, spread, lots,
+                       clusterRiskPct, sent,
+                       sent ? "" : "TradeExecution fehlgeschlagen");
 
    if(sent)
-      g_signalDipBuy.NotifyFilled();
+      slot.module.NotifyFilled();
    else
-      g_signalDipBuy.NotifyOrderFailed();
+      slot.module.NotifyOrderFailed();
   }
 
 //+------------------------------------------------------------------+
@@ -141,47 +295,127 @@ void EvaluateAndExecute(SignalProposal &proposal)
 //+------------------------------------------------------------------+
 int OnInit(void)
   {
+   //--- 1. Symbol-Resolver
    if(!g_symbolResolver.Init(_Symbol))
       return INIT_FAILED;
 
-   if(!g_marketData.Init(_Symbol, InpEmaSlow, InpEmaMid, InpAtrPeriod, InpSwingLookback))
+   //--- 2. TimeContext + Plausibilitaets-Log
+   g_timeContext.Configure(InpGmtOffsetWinter, InpGmtOffsetSummer,
+                           InpOverlapStartGmtHour, InpOverlapEndGmtHour,
+                           InpMondayStartGmtHour, InpFridayStopGmtHour);
+   g_timeContext.LogInitPlausibility();
+
+   //--- 3. Pruefen ob ein disabled Modul eine offene Position hat
+   //---    (muss VOR MarketData.Init sein, damit TF-Flags korrekt gesetzt werden)
+   int  magicDipBuy  = MagicDipBuy(InpMagicBase);
+   int  magicOverlap = MagicOverlapTrend(InpMagicBase);
+   bool dipBuyHasPos  = PositionExistsForMagic(magicDipBuy);
+   bool overlapHasPos = PositionExistsForMagic(magicOverlap);
+
+   bool needH4Emas = InpUseOverlapModule || overlapHasPos;
+   bool needM15    = InpUseOverlapModule || overlapHasPos;
+
+   //--- 4. MarketData mit TF-Konfiguration
+   SMarketDataCfg mdCfg;
+   mdCfg.emaSlowPeriod      = InpEmaSlow;
+   mdCfg.emaMidPeriod       = InpEmaMid;
+   mdCfg.atrPeriod          = InpAtrPeriod;
+   mdCfg.swingLookback      = InpSwingLookback;
+   mdCfg.useH4Emas          = needH4Emas;
+   mdCfg.emaFastH4Period    = InpOvEmaFastH4;
+   mdCfg.emaSlowH4Period    = InpOvEmaSlowH4;
+   mdCfg.useM15             = needM15;
+   mdCfg.emaPullbackFastM15 = InpOvPullbackEmaFast;
+   mdCfg.emaPullbackSlowM15 = InpOvPullbackEmaSlow;
+   mdCfg.atrPeriodM15       = InpOvAtrPeriodM15;
+
+   if(!g_marketData.Init(_Symbol, mdCfg))
       return INIT_FAILED;
 
-   g_marketData.IsNewD1Bar(); // D1-Referenz seeden, damit InpArmedExpiryBars nicht sofort dekrementiert
+   //--- 5. PollNewBars als Seed (IsNewD1Bar-Referenz setzen)
+   g_marketData.PollNewBars();
 
-   g_magicDipBuy = MagicDipBuy(InpMagicBase);
+   //--- 6a. DipBuy-Slot
+   g_slots[0].enabled      = InpUseDipBuyModule;
+   g_slots[0].magic        = magicDipBuy;
+   g_slots[0].riskPct      = InpRiskPctDipBuy;
+   g_slots[0].trailAtrMult = InpTrailAtrMult;
+   g_slots[0].module       = new CSignalDipBuy();
 
-   g_signalDipBuy.Configure(InpAllowShort, InpSwingLookback, InpAtrStopMult, InpArmedExpiryBars, g_magicDipBuy);
-   g_filterStack.Configure(_Symbol, InpUseSpreadFilter, InpMaxSpreadPoints);
-   g_riskManager.Configure(_Symbol, InpRiskPercent, InpMaxLotPerTrade, AccountInfoDouble(ACCOUNT_EQUITY), InpFrictionSLMult, InpSlippageBufferPts);
-   g_positionTracker.Configure(_Symbol, g_magicDipBuy);
+   CSignalDipBuy *dipBuy = (CSignalDipBuy *)g_slots[0].module;
+   dipBuy.Configure(InpAllowShort, InpSwingLookback, InpAtrStopMult,
+                    InpArmedExpiryBars, magicDipBuy);
+
+   g_slots[0].tracker.Configure(_Symbol, magicDipBuy);
+   g_slots[0].exec.Configure(_Symbol, magicDipBuy,
+                              g_symbolResolver.StopsLevelPoints(),
+                              g_symbolResolver.FreezeLevelPoints(),
+                              (int)MathRound(InpSlippageBufferPts),
+                              "SwingGoldDipBuy");
+   g_slots[0].manager.Configure(_Symbol, InpPartialPct, g_slots[0].trailAtrMult,
+                                 g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
+                                 g_symbolResolver.StopsLevelPoints(),
+                                 PERIOD_D1);  // ATR vom D1 fuer DipBuy
+
+   //--- 6b. Overlap-Slot
+   g_slots[1].enabled      = InpUseOverlapModule;
+   g_slots[1].magic        = magicOverlap;
+   g_slots[1].riskPct      = InpRiskPctOverlap;
+   g_slots[1].trailAtrMult = InpOvTrailAtrMult;
+   g_slots[1].module       = new CSignalOverlapTrend();
+
+   CSignalOverlapTrend *overlap = (CSignalOverlapTrend *)g_slots[1].module;
+   overlap.Configure(InpOvAllowShort, InpOvSwingLookbackM15, InpOvAtrStopMult,
+                     InpOvZoneExpiryBars, magicOverlap);
+
+   g_slots[1].tracker.Configure(_Symbol, magicOverlap);
+   g_slots[1].exec.Configure(_Symbol, magicOverlap,
+                              g_symbolResolver.StopsLevelPoints(),
+                              g_symbolResolver.FreezeLevelPoints(),
+                              (int)MathRound(InpSlippageBufferPts),
+                              "SwingGoldOverlap");
+   g_slots[1].manager.Configure(_Symbol, InpPartialPct, g_slots[1].trailAtrMult,
+                                 g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
+                                 g_symbolResolver.StopsLevelPoints(),
+                                 PERIOD_M15); // ATR vom M15 fuer Overlap (strategies.md Teil D)
+
+   //--- 6c. Kontoweite Komponenten
+   g_filterStack.Configure(_Symbol,
+                            InpUseSpreadFilter, InpMaxSpreadPoints,
+                            InpUseSessionFilter, InpUseWeekdayFilter);
+
+   g_riskManager.Configure(_Symbol, InpRiskPctDipBuy, InpMaxLotPerTrade,
+                            AccountInfoDouble(ACCOUNT_EQUITY),
+                            InpFrictionSLMult, InpSlippageBufferPts);
+   // Hinweis: m_riskPercent in RiskManager wird nur als Fallback genutzt;
+   // der eigentliche per-Slot-Wert kommt via riskPercentOverride in ComputeLots.
+
+   g_clusterRiskGuard.Configure(InpMetalCluster, InpMaxClusterRiskPct,
+                                 InpClusterCountForeign, InpClusterNoSLBlocks);
+
    g_drawdownGuard.Configure(_Symbol, InpMagicBase, InpMaxDailyLossPct, InpMaxTotalDDPct);
-   g_tradeExecution.Configure(_Symbol, g_magicDipBuy, g_symbolResolver.StopsLevelPoints(),
-                              g_symbolResolver.FreezeLevelPoints(), (int)MathRound(InpSlippageBufferPts));
-   g_tradeManager.Configure(_Symbol, InpPartialPct, InpTrailAtrMult, g_symbolResolver.VolumeMin(),
-                            g_symbolResolver.VolumeStep(), g_symbolResolver.StopsLevelPoints());
+   g_drawdownGuard.Update();
 
-   if(!g_decisionLog.Init(InpLogDecisions, "SwingGoldEA_DecisionLog.csv", g_symbolResolver.Digits()))
+   if(!g_decisionLog.Init(InpLogDecisions, "SwingGoldEA_DecisionLog.csv",
+                          g_symbolResolver.Digits()))
       Print("SwingGoldEA: DecisionLog konnte nicht initialisiert werden - Telemetrie deaktiviert.");
 
-   g_drawdownGuard.Update(); // Tagesstart-/Peak-Equity beim Start seeden
-
-   //--- Restart-Resilienz: bereits offene eigene Position erkennen (ea.md 5, Persistenz).
-   //--- Hinweis: Zone-/Zielpreise fuer Teilgewinn koennen nach einem Neustart nicht
-   //--- rekonstruiert werden (nicht persistiert) - TradeManager faellt dann auf reines
-   //--- Breakeven+Trailing zurueck, bis die Position regulaer schliesst.
-   ulong ticket;
-   if(g_positionTracker.FindOwnPosition(ticket))
+   //--- 7. Restart-Resilienz: offene eigene Positionen resynchronisieren
+   for(int i = 0; i < 2; i++)
      {
-      ENUM_POSITION_TYPE posType;
-      if(g_positionTracker.GetType(ticket, posType))
-         g_signalDipBuy.SyncInPosition(posType == POSITION_TYPE_BUY ? SIGNAL_LONG : SIGNAL_SHORT);
-      else
-         Print("SwingGoldEA: Positionsrichtung konnte nicht gelesen werden - Sync uebersprungen.");
+      if(PositionExistsForMagic(g_slots[i].magic))
+         SyncSlotFromBroker(g_slots[i]);
      }
 
-   PrintFormat("SwingGoldEA init OK - Symbol=%s MagicDipBuy=%d Equity=%.2f",
-               _Symbol, g_magicDipBuy, AccountInfoDouble(ACCOUNT_EQUITY));
+   //--- 8. Init-Log (Beweis im Journal welche Konfiguration lief, Hazard H14)
+   PrintFormat("SwingGoldEA v2 init OK | Symbol=%s | DipBuy=%s (Magic=%d) | Overlap=%s (Magic=%d) | "
+               "Equity=%.2f | ClusterDegraded=%s",
+               _Symbol,
+               InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
+               InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
+               AccountInfoDouble(ACCOUNT_EQUITY),
+               g_clusterRiskGuard.IsDegraded() ? "true" : "false");
+
    return INIT_SUCCEEDED;
   }
 
@@ -190,54 +424,138 @@ int OnInit(void)
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   //--- Alle Slots freigeben (auch nicht-aktivierte, Hazard H2)
+   for(int i = 0; i < 2; i++)
+      g_slots[i].Release();
+
    g_marketData.Deinit();
    g_decisionLog.Deinit();
   }
 
 //+------------------------------------------------------------------+
-//| OnTick - handelt nur auf neuen, geschlossenen H4-Bars.           |
+//| OnTick — handelt nur auf neuen, geschlossenen Bars.              |
 //+------------------------------------------------------------------+
 void OnTick(void)
   {
-   if(!g_marketData.IsNewH4Bar())
-      return;
+   //--- Bar-Flags einmal latchern (Bugfix: consumable-flag, Hazard H5)
+   g_marketData.PollNewBars();
 
-   if(!g_marketData.Update())
-     {
-      Print("SwingGoldEA: MarketData.Update() fehlgeschlagen - Bar uebersprungen.");
-      return;
-     }
-
+   //--- DrawdownGuard kontoweit aktualisieren
    g_drawdownGuard.Update();
 
-   ulong ticket;
-   bool  hasPosition = g_positionTracker.FindOwnPosition(ticket);
+   //--- Indikatorcaches VOR dem Slot-Loop einmalig aktualisieren (Bugfix: EnsureD1/H4/M15
+   //--- setzt m_*Valid am Anfang auf false — wuerde bei Fehler im 2. Slot-Durchlauf
+   //--- den Cache ungueltigen Zustand hinterlassen, obwohl Slot 0 bereits damit arbeitete).
+   bool d1ReadOk  = true;
+   bool h4ReadOk  = true;
+   bool m15ReadOk = true;
 
-   if(hasPosition)
+   if(g_marketData.IsNewH4Bar() || g_marketData.IsNewD1Bar())
      {
-      if(g_signalDipBuy.GetState() != ST_IN_POSITION)
+      if(!g_marketData.EnsureD1())
         {
-         ENUM_POSITION_TYPE posType;
-         if(g_positionTracker.GetType(ticket, posType))
-            g_signalDipBuy.SyncInPosition(posType == POSITION_TYPE_BUY ? SIGNAL_LONG : SIGNAL_SHORT);
-         else
-            Print("SwingGoldEA: Positionsrichtung konnte nicht gelesen werden - Sync uebersprungen.");
+         if(!g_marketData.IsD1Valid())
+           {
+            Print("SwingGoldEA: EnsureD1 fehlgeschlagen - alle Slots in diesem Tick uebersprungen.");
+            d1ReadOk = false;
+           }
         }
-
-      g_tradeManager.Manage(ticket, g_signalDipBuy.GetDir(), g_signalDipBuy.GetTargetPrice(),
-                            g_marketData, g_positionTracker, g_tradeExecution);
-      return;
      }
 
-   if(g_signalDipBuy.GetState() == ST_IN_POSITION)
-      g_signalDipBuy.NotifyPositionClosed(); // extern geschlossen (SL/TP-Hit, manuell)
+   if(g_marketData.IsNewH4Bar())
+     {
+      if(!g_marketData.EnsureH4())
+        {
+         if(!g_marketData.IsH4Valid())
+           {
+            Print("SwingGoldEA: EnsureH4 fehlgeschlagen - Overlap-Slot in diesem Tick uebersprungen.");
+            h4ReadOk = false;
+           }
+        }
+     }
 
-   SignalProposal proposal;
-   bool triggered = g_signalDipBuy.OnBar(g_marketData, proposal);
+   if(g_marketData.IsNewM15Bar())
+     {
+      if(!g_marketData.EnsureM15())
+        {
+         if(!g_marketData.IsM15Valid())
+           {
+            Print("SwingGoldEA: EnsureM15 fehlgeschlagen - Overlap-Slot in diesem Tick uebersprungen.");
+            m15ReadOk = false;
+           }
+        }
+     }
 
-   if(!triggered || !proposal.valid)
-      return; // reine Beobachtung ohne Trigger wird nicht geloggt (kein Log-Spam)
+   //--- Slot-Loop in fester Reihenfolge (0=DipBuy vor 1=Overlap, Hazard H10:
+   //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
+   for(int s = 0; s < 2; s++)
+     {
+      CStrategySlot &slot = g_slots[s];
 
-   EvaluateAndExecute(proposal);
+      ENUM_TIMEFRAMES trigTf = slot.module.TriggerTimeframe();
+      ENUM_TIMEFRAMES atrTf  = slot.module.AtrTimeframe();
+
+      //--- Daten-Verfuegbarkeit fuer diesen Slot pruefen
+      bool dataOk = true;
+      if(!d1ReadOk)
+         dataOk = false;
+      if(!h4ReadOk  && (trigTf == PERIOD_M15 || atrTf == PERIOD_M15))
+         dataOk = false;
+      if(!m15ReadOk && (trigTf == PERIOD_M15 || atrTf == PERIOD_M15))
+         dataOk = false;
+
+      if(!dataOk)
+         continue;
+
+      //--- Position vorhanden? -> Management (AUCH bei disabled Modul, Hazard H2/plan Anforderung)
+      ulong ticket;
+      bool  hasPosition = slot.tracker.FindOwnPosition(ticket);
+
+      if(hasPosition)
+        {
+         //--- State-Machine synchron halten
+         if(slot.module.GetState() != ST_IN_POSITION)
+           {
+            ENUM_POSITION_TYPE posType;
+            if(slot.tracker.GetType(ticket, posType))
+               slot.module.SyncInPosition(posType == POSITION_TYPE_BUY ? SIGNAL_LONG : SIGNAL_SHORT);
+            else
+               PrintFormat("SwingGoldEA: Positionsrichtung fuer Slot %d unlesbar - Sync uebersprungen.", s);
+           }
+
+         //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing
+         slot.manager.Manage(ticket, slot.module.GetDir(), slot.module.GetTargetPrice(),
+                             g_marketData, slot.tracker, slot.exec);
+
+         continue; // kein neuer Entry solange Position offen
+        }
+
+      //--- Position gerade extern geschlossen?
+      if(slot.module.GetState() == ST_IN_POSITION)
+         slot.module.NotifyPositionClosed();
+
+      //--- Neuer Entry nur wenn Modul enabled UND neue Bar auf dem Trigger-TF
+      if(!slot.enabled)
+         continue;
+
+      bool newTriggerBar = (trigTf == PERIOD_H4)  ? g_marketData.IsNewH4Bar()
+                         : (trigTf == PERIOD_M15) ? g_marketData.IsNewM15Bar()
+                         : false;
+
+      if(!newTriggerBar)
+         continue;
+
+      //--- D1 muss fuer beide Module valid sein
+      if(!g_marketData.IsD1Valid())
+         continue;
+
+      SignalProposal proposal;
+      bool triggered = slot.module.OnBar(g_marketData, proposal);
+
+      if(!triggered || !proposal.valid)
+         continue;
+
+      EvaluateAndExecute(slot, proposal);
+     }
   }
 //+------------------------------------------------------------------+

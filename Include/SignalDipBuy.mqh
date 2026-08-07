@@ -1,39 +1,38 @@
 //+------------------------------------------------------------------+
 //|                                                 SignalDipBuy.mqh |
 //|   Phase-1-Strategie: struktureller Dip-Buy (D1-Bias/Setup,       |
-//|   H4-Trigger). Long-Bias = Close>EMA(Slow) + hoehere Tiefs,      |
-//|   gespiegelt fuer Short (nur wenn m_allowShort). Setup-Zone ist  |
-//|   die Vereinigung aus EMA(Mid)-Beruehrung und Fib 0.382-0.618    |
-//|   des letzten Impulses (ea.md 4.6). Kein RSI-/Zeit-Exit.         |
+//|   H4-Trigger). Long-Bias = Close>EMA(Slow) + hoehere Tiefs,    |
+//|   gespiegelt fuer Short (nur wenn m_allowShort). Setup-Zone ist |
+//|   die Vereinigung aus EMA(Mid)-Beruehrung und Fib 0.382-0.618  |
+//|   des letzten Impulses (ea.md 4.6). Kein RSI-/Zeit-Exit.       |
+//|                                                                   |
+//|   Erbt von CSignalModuleBase (gemeinsame State Machine,         |
+//|   Notify*/Get*/Sync). Bias/Setup/Trigger-Ruempfe und            |
+//|   BuildProposal bleiben unveraendert (Referenz fuer             |
+//|   Verhaltensgleichheit, Plan-Check 1-4).                        |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALDIPBUY_MQH__
 #define __SWINGGOLD_SIGNALDIPBUY_MQH__
 
-#include "Types.mqh"
-#include "MarketData.mqh"
+#include "SignalModuleBase.mqh"
 
-class CSignalDipBuy
+class CSignalDipBuy : public CSignalModuleBase
   {
 private:
-   ENUM_SETUP_STATE  m_state;
-   ENUM_SIGNAL_DIR   m_dir;              // nur waehrend ARMED..PENDING gueltig
-
    bool              m_allowShort;
    int               m_swingLookback;
-   int               m_swingSearchDepth; // wie weit (Shifts) rueckwaerts nach Swings gesucht wird
+   int               m_swingSearchDepth;
    double            m_atrStopMult;
-   int               m_armedExpiryBars;  // konfigurierter Default
-   int               m_expiryCounter;    // laufender Countdown
-   int               m_magic;
+   int               m_armedExpiryBars;
+   int               m_expiryCounter;
 
    double            m_zoneLow;
    double            m_zoneHigh;
-   double            m_stopSwingPrice;   // Swing-Extremum, das das Setup definiert (fuer Stop + Invalidierung)
-   double            m_targetPrice;      // altes Swing-Hoch/-Tief, Teilgewinn-Ziel
+   double            m_stopSwingPrice;
 
    //+------------------------------------------------------------------+
-   //| D1-Bias: Trend (Close vs. EMA-Slow) + Struktur (hoehere Tiefs   |
-   //| fuer Long, tiefere Hochs fuer Short, fraktalbasiert).            |
+   //| D1-Bias: Trend (Close vs. EMA-Slow) + Struktur (hoehere Tiefs  |
+   //| fuer Long, tiefere Hochs fuer Short, fraktalbasiert).           |
    //+------------------------------------------------------------------+
    bool              CheckBias(CMarketData &md, const ENUM_SIGNAL_DIR dir)
      {
@@ -74,10 +73,7 @@ private:
      }
 
    //+------------------------------------------------------------------+
-   //| D1-Setup: Impuls (letztes bestaetigtes Swing-Extremum -> das     |
-   //| dazwischenliegende, juengere Gegen-Extremum) + Zone (Fib         |
-   //| 0.382-0.618, erweitert um EMA-Mid, falls dieser innerhalb des    |
-   //| Impulses liegt).                                                 |
+   //| D1-Setup: Impuls + Zone (Fib 0.382-0.618, erweitert um EMA-Mid)|
    //+------------------------------------------------------------------+
    bool              CheckBiasAndSetup(CMarketData &md, const ENUM_SIGNAL_DIR dir)
      {
@@ -94,7 +90,7 @@ private:
             return false;
 
          if(lowShift - 1 < m_swingLookback + 1)
-            return false; // keine Bars fuer ein Gegen-Extremum zwischen Tief und jetzt
+            return false;
 
          int    highShift;
          double highPrice;
@@ -110,7 +106,7 @@ private:
 
          double zoneLow  = fibLow;
          double zoneHigh = fibHigh;
-         if(emaMid > lowPrice && emaMid < highPrice) // EMA-Mid sinnvoll innerhalb des Impulses
+         if(emaMid > lowPrice && emaMid < highPrice)
            {
             zoneLow  = MathMin(zoneLow, emaMid);
             zoneHigh = MathMax(zoneHigh, emaMid);
@@ -166,10 +162,10 @@ private:
      }
 
    //+------------------------------------------------------------------+
-   //| H4-Trigger: Umkehrkerze in der Zone. Long = bullisch (Close>Open |
-   //| und Close > Mitte der Vorkerze), Short gespiegelt.               |
+   //| H4-Trigger: Umkehrkerze in der Zone.                            |
    //+------------------------------------------------------------------+
-   bool              CheckTriggerCandle(CMarketData &md, const ENUM_SIGNAL_DIR dir, double &outRefPrice)
+   bool              CheckTriggerCandle(CMarketData &md, const ENUM_SIGNAL_DIR dir,
+                                        double &outRefPrice)
      {
       double open1, close1, open2, close2;
       if(!md.GetH4Bar(1, open1, close1))
@@ -195,14 +191,8 @@ private:
                   dir, m_zoneLow, m_zoneHigh, m_stopSwingPrice, m_targetPrice, m_expiryCounter);
      }
 
-   void              ResetToIdle(const string logReason)
-     {
-      PrintFormat("SignalDipBuy: ST_IDLE (%s)", logReason);
-      m_state = ST_IDLE;
-      m_dir   = SIGNAL_FLAT;
-     }
-
-   void              BuildProposal(CMarketData &md, const double refPrice, SignalProposal &outProposal)
+   void              BuildProposal(CMarketData &md, const double refPrice,
+                                   SignalProposal &outProposal)
      {
       double atr = md.GetAtrD1();
 
@@ -228,13 +218,14 @@ private:
 
 public:
                      CSignalDipBuy(void):
-                        m_state(ST_IDLE), m_dir(SIGNAL_FLAT), m_allowShort(false),
-                        m_swingLookback(5), m_swingSearchDepth(250), m_atrStopMult(2.0),
-                        m_armedExpiryBars(10), m_expiryCounter(0), m_magic(0),
-                        m_zoneLow(0.0), m_zoneHigh(0.0), m_stopSwingPrice(0.0), m_targetPrice(0.0) {}
+                        CSignalModuleBase(),
+                        m_allowShort(false), m_swingLookback(5), m_swingSearchDepth(250),
+                        m_atrStopMult(2.0), m_armedExpiryBars(10), m_expiryCounter(0),
+                        m_zoneLow(0.0), m_zoneHigh(0.0), m_stopSwingPrice(0.0) {}
 
-   void              Configure(const bool allowShort, const int swingLookback, const double atrStopMult,
-                               const int armedExpiryBars, const int magic)
+   void              Configure(const bool allowShort, const int swingLookback,
+                               const double atrStopMult, const int armedExpiryBars,
+                               const int magic)
      {
       m_allowShort      = allowShort;
       m_swingLookback   = swingLookback;
@@ -243,21 +234,17 @@ public:
       m_magic           = magic;
      }
 
-   ENUM_SETUP_STATE  GetState(void) const { return m_state; }
-   ENUM_SIGNAL_DIR   GetDir(void) const { return m_dir; }
-
-   //--- Fuer den TradeManager: altes Swing-Hoch/-Tief als Teilgewinn-Ziel
-   //--- der aktuell laufenden (bzw. gerade eroeffneten) Position.
-   double            GetTargetPrice(void) const { return m_targetPrice; }
+   //--- Pure-virtual-Implementierungen (const-Qualifier VERBATIM, Hazard H1)
+   virtual string           Name(void)              const { return "SignalDipBuy"; }
+   virtual ENUM_TIMEFRAMES  TriggerTimeframe(void)  const { return PERIOD_H4;      }
+   virtual ENUM_TIMEFRAMES  AtrTimeframe(void)      const { return PERIOD_D1;      }
+   virtual bool             SessionRestricted(void) const { return false;          }
 
    //+------------------------------------------------------------------+
-   //| Vom Haupt-EA einmal pro neuer H4-Bar aufgerufen, solange KEINE   |
-   //| eigene Position offen ist. Liefert true + gefuellte outProposal, |
-   //| wenn ein Trigger gefeuert hat (Zustand wechselt dann auf         |
-   //| ST_PENDING - der Aufrufer meldet das Ergebnis ueber Notify*()    |
-   //| zurueck).                                                        |
+   //| Vom Haupt-EA einmal pro neuer H4-Bar aufgerufen, solange KEINE  |
+   //| eigene Position offen ist.                                       |
    //+------------------------------------------------------------------+
-   bool              OnBar(CMarketData &md, SignalProposal &outProposal)
+   virtual bool OnBar(CMarketData &md, SignalProposal &outProposal)
      {
       outProposal.Reset();
 
@@ -281,9 +268,7 @@ public:
               }
            }
 
-         //--- InpArmedExpiryBars ist in D1-Bars definiert (ea.md), OnBar() wird aber
-         //--- pro geschlossener H4-Bar aufgerufen - daher nur bei tatsaechlichem
-         //--- D1-Bar-Wechsel dekrementieren, sonst verfaellt das Setup 4x zu schnell.
+         //--- Verfall nur bei echtem D1-Bar-Wechsel (via Latch, deterministisch)
          if(md.IsNewD1Bar())
            {
             m_expiryCounter--;
@@ -320,31 +305,10 @@ public:
          else if(m_allowShort && CheckBiasAndSetup(md, SIGNAL_SHORT))
             Arm(SIGNAL_SHORT);
 
-         return false; // fruehestens im naechsten Bar kann getriggert werden
+         return false;
         }
 
       return false; // ST_PENDING/ST_IN_POSITION/ST_BLOCKED: vom Aufrufer verwaltet
-     }
-
-   //--- Callbacks des Haupt-EA nach Order-Ausfuehrung / Filter-Veto / Positions-Ende.
-   void              NotifyFilled(void)      { m_state = ST_IN_POSITION; }
-   void              NotifyOrderFailed(void) { ResetToIdle("Order fehlgeschlagen"); }
-   void              NotifyFilterVeto(void)
-     {
-      m_state = ST_BLOCKED;
-      ResetToIdle("FilterStack-Veto");
-     }
-   void              NotifyPositionClosed(void) { ResetToIdle("Position geschlossen"); }
-
-   //--- Nach Neustart/Reattach: Zustand aus vorhandener Position rekonstruieren.
-   //--- dir muss vom Aufrufer aus der tatsaechlichen Positionsrichtung (Broker)
-   //--- ermittelt werden, da m_dir sonst auf SIGNAL_FLAT verbleibt und
-   //--- TradeManager dann faelschlich den Short-Zweig fuer eine Long-Position
-   //--- (oder umgekehrt) durchlaeuft.
-   void              SyncInPosition(const ENUM_SIGNAL_DIR dir)
-     {
-      m_dir   = dir;
-      m_state = ST_IN_POSITION;
      }
   };
 

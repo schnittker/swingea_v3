@@ -70,12 +70,16 @@ public:
      }
 
    //+------------------------------------------------------------------+
-   //| Schreibt eine Zeile fuer eine Signal-Evaluierung. regime bleibt  |
-   //| "UNKNOWN" und clusterRiskPct "0" als Platzhalter (Phase 2).      |
+   //| Schreibt eine Zeile fuer eine Signal-Evaluierung.               |
+   //| regime bleibt "UNKNOWN" als Platzhalter (Phase 2).             |
+   //| clusterRiskPct: echtes Cluster-Risiko in % der Equity,          |
+   //|   gemessen VOR dem neuen Trade (von ClusterRiskGuard).          |
+   //| Spaltenreihenfolge und -anzahl unveraendert (CSV-kompatibel).  |
    //+------------------------------------------------------------------+
    void              Write(const string signalModule, const ENUM_SIGNAL_DIR dir, const double entry,
                            const double sl, const double tp, const double atr, const long spread,
-                           const double lots, const bool accepted, const string rejectReason)
+                           const double lots, const double clusterRiskPct,
+                           const bool accepted, const string rejectReason)
      {
       if(!m_enabled || m_handle == INVALID_HANDLE)
          return;
@@ -93,7 +97,7 @@ public:
                 DoubleToString(atr, m_digits),
                 (long)spread,
                 DoubleToString(lots, 2),
-                "0",
+                DoubleToString(clusterRiskPct, 2),
                 accepted ? "true" : "false",
                 rejectReason);
       FileFlush(m_handle);

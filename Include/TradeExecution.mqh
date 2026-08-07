@@ -20,6 +20,7 @@ private:
    int               m_stopsLevelPoints;
    int               m_freezeLevelPoints;
    int               m_maxRetries;
+   string            m_orderComment;  // Telemetrie, KEINE Identitaet (Identitaet = Magic)
 
    //--- Leitet den unterstuetzten Filling-Modus aus der Bitmaske ab.
    ENUM_ORDER_TYPE_FILLING DetectFillingMode(void)
@@ -57,14 +58,17 @@ private:
 
 public:
                      CTradeExecution(void):
-                        m_symbol(""), m_stopsLevelPoints(0), m_freezeLevelPoints(0), m_maxRetries(3) {}
+                        m_symbol(""), m_stopsLevelPoints(0), m_freezeLevelPoints(0),
+                        m_maxRetries(3), m_orderComment("SwingGoldEA") {}
 
    void              Configure(const string symbol, const int magic, const int stopsLevelPoints,
-                               const int freezeLevelPoints, const int slippagePts)
+                               const int freezeLevelPoints, const int slippagePts,
+                               const string orderComment = "SwingGoldEA")
      {
       m_symbol            = symbol;
       m_stopsLevelPoints  = stopsLevelPoints;
       m_freezeLevelPoints = freezeLevelPoints;
+      m_orderComment      = orderComment;
 
       m_trade.SetExpertMagicNumber(magic);
       m_trade.SetDeviationInPoints(slippagePts);
@@ -95,8 +99,8 @@ public:
          NormalizeStops(dir, refPrice, slNorm, tpNorm);
 
          bool ok = (dir == SIGNAL_LONG)
-                     ? m_trade.Buy(lots, m_symbol, 0.0, slNorm, tpNorm, "SwingGoldDipBuy")
-                     : m_trade.Sell(lots, m_symbol, 0.0, slNorm, tpNorm, "SwingGoldDipBuy");
+                     ? m_trade.Buy(lots, m_symbol, 0.0, slNorm, tpNorm, m_orderComment)
+                     : m_trade.Sell(lots, m_symbol, 0.0, slNorm, tpNorm, m_orderComment);
 
          if(ok)
            {

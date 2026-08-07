@@ -78,9 +78,15 @@ public:
    //| Marktpreis (Ask/Bid), da die Order als Market-Order (entryPrice  |
    //| =0) ausgefuehrt wird. Gibt 0.0 zurueck, wenn kein sinnvoller     |
    //| Trade moeglich ist (lots < VOLUME_MIN, statt aufzurunden).       |
+   //|                                                                   |
+   //| riskPercentOverride: wenn > 0.0, wird dieser Wert statt         |
+   //| m_riskPercent verwendet (fuer per-Slot-Risiko-Prozentsatz).     |
+   //| Default 0.0 = m_riskPercent (rueckwaertskompatibel).            |
    //+------------------------------------------------------------------+
    double            ComputeLots(const double refPrice, const double stopPrice,
-                                 const double volumeMin, const double volumeMax, const double volumeStep)
+                                 const double volumeMin, const double volumeMax,
+                                 const double volumeStep,
+                                 const double riskPercentOverride = 0.0)
      {
       double stopDist = MathAbs(refPrice - stopPrice);
       if(stopDist <= 0.0)
@@ -98,7 +104,8 @@ public:
         }
 
       double equity     = AccountInfoDouble(ACCOUNT_EQUITY);
-      double riskMoney   = equity * (m_riskPercent / 100.0);
+      double usedPct    = (riskPercentOverride > 0.0) ? riskPercentOverride : m_riskPercent;
+      double riskMoney   = equity * (usedPct / 100.0);
       double moneyPerLot = (tickValue / tickSize) * stopDist;
       if(moneyPerLot <= 0.0)
         {
