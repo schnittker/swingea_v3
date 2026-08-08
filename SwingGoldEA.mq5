@@ -71,6 +71,7 @@ input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - D
 input group "=== Strategie LiquiditySweep ==="
 input bool   InpSwAllowShort   = false; // Short-Sweeps erlaubt
 input double InpSwAtrStopMult  = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
+input int    InpSwReclaimBars  = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -396,7 +397,7 @@ int OnInit(void)
    g_slots[2].module       = new CSignalLiquiditySweep();
 
    CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
-   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, magicSweep);
+   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwReclaimBars, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
