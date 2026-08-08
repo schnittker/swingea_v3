@@ -55,15 +55,15 @@ input int    InpArmedExpiryBars    = 10;     // Verfall eines Setups (D1-Bars)
 
 input group "=== Strategie Overlap ==="
 input bool   InpOvAllowShort       = false;  // Short fuer Overlap (Asymmetrie-Hypothese)
-input int    InpOvEmaFastH4        = 50;     // H4-Bias EMA Fast
-input int    InpOvEmaSlowH4        = 200;    // H4-Bias EMA Slow
-input int    InpOvPullbackEmaFast  = 20;     // M15-Zone EMA Fast
+input int    InpOvEmaFastH4        = 30;     // H4-Bias EMA Fast
+input int    InpOvEmaSlowH4        = 150;    // H4-Bias EMA Slow
+input int    InpOvPullbackEmaFast  = 15;     // M15-Zone EMA Fast
 input int    InpOvPullbackEmaSlow  = 50;     // M15-Zone EMA Slow
 input int    InpOvAtrPeriodM15     = 14;     // ATR-Periode M15
-input double InpOvAtrStopMult      = 1.75;   // [OPT] Stop-Abstand M15 (1.5-2.0)
+input double InpOvAtrStopMult      = 2.75;   // [OPT] Stop-Abstand M15 (1.5-2.0)
 input int    InpOvSwingLookbackM15 = 3;      // Fraktal-Breite M15
-input int    InpOvZoneExpiryBars   = 8;      // Verfall (M15-Bars)
-input double InpOvTrailAtrMult     = 2.5;    // Trailing-Abstand (ATR-M15)
+input int    InpOvZoneExpiryBars   = 12;     // Verfall (M15-Bars)
+input double InpOvTrailAtrMult     = 4.0;    // Trailing-Abstand (ATR-M15)
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
