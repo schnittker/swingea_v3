@@ -7,7 +7,8 @@
 //|   Schutzschichten (Uebernahme aus dem Vorgaenger-Modul):        |
 //|     1) Mindest-Stop-Abstand >= FrictionSLMult*(Spread+Slippage) |
 //|     2) SYMBOL_TRADE_STOPS_LEVEL als harte Untergrenze            |
-//|     3) MaxLotPerTrade-Kappung                                   |
+//|     3) MaxRiskPctPerTrade: Lot-Kappung als % der Equity —       |
+//|        kapitalunabhaengig, kein manuelles Anpassen noetig.      |
 //|     4) Normalisierung auf VOLUME_STEP, Pruefung Min/Max          |
 //|     5) Abbruch bei lots<VOLUME_MIN (kein Aufrunden)              |
 //+------------------------------------------------------------------+
@@ -21,8 +22,7 @@ class CRiskManager
 private:
    string            m_symbol;
    double            m_riskPercent;
-   double            m_maxLotPerTrade;
-   double            m_baseEquity;
+   double            m_maxRiskPctPerTrade;  // Lot-Kappung als % der Equity (kapitalunabhaengig)
    double            m_frictionSLMult;
    double            m_slippageBufferPts;
 
@@ -36,18 +36,17 @@ private:
 
 public:
                      CRiskManager(void):
-                        m_symbol(""), m_riskPercent(1.0), m_maxLotPerTrade(1.0),
-                        m_baseEquity(3000.0), m_frictionSLMult(15.0), m_slippageBufferPts(20.0) {}
+                        m_symbol(""), m_riskPercent(1.0), m_maxRiskPctPerTrade(2.0),
+                        m_frictionSLMult(15.0), m_slippageBufferPts(20.0) {}
 
-   void              Configure(const string symbol, const double riskPercent, const double maxLotPerTrade,
-                               const double baseEquity, const double frictionSLMult, const double slippageBufferPts)
+   void              Configure(const string symbol, const double riskPercent, const double maxRiskPctPerTrade,
+                               const double frictionSLMult, const double slippageBufferPts)
      {
-      m_symbol             = symbol;
-      m_riskPercent        = riskPercent;
-      m_maxLotPerTrade     = maxLotPerTrade;
-      m_baseEquity         = (baseEquity > 0.0) ? baseEquity : 3000.0;
-      m_frictionSLMult     = frictionSLMult;
-      m_slippageBufferPts  = slippageBufferPts;
+      m_symbol              = symbol;
+      m_riskPercent         = riskPercent;
+      m_maxRiskPctPerTrade  = (maxRiskPctPerTrade > 0.0) ? maxRiskPctPerTrade : 2.0;
+      m_frictionSLMult      = frictionSLMult;
+      m_slippageBufferPts   = slippageBufferPts;
      }
 
    //+------------------------------------------------------------------+
@@ -115,13 +114,15 @@ public:
 
       double lots = riskMoney / moneyPerLot;
 
-      //--- Lot-Kappung skaliert proportional zur Equity: bei Start-Equity gilt InpMaxLotPerTrade,
-      //--- darueber waechst das Limit linear mit (aktuelle equity / Start-Equity).
-      if(m_maxLotPerTrade > 0.0)
+      //--- Lot-Kappung als % der Equity: kapitalunabhaengig, kein manuelles Anpassen noetig.
+      //--- maxRiskMoney = equity * maxRiskPctPerTrade / 100
+      //--- maxLot       = maxRiskMoney / moneyPerLot
+      if(m_maxRiskPctPerTrade > 0.0)
         {
-         double dynamicMaxLot = m_maxLotPerTrade * MathMax(1.0, equity / m_baseEquity);
-         if(lots > dynamicMaxLot)
-            lots = dynamicMaxLot;
+         double maxRiskMoney = equity * (m_maxRiskPctPerTrade / 100.0);
+         double maxLot       = maxRiskMoney / moneyPerLot;
+         if(lots > maxLot)
+            lots = maxLot;
         }
 
       if(volumeStep > 0.0)

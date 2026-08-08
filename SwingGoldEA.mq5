@@ -86,7 +86,7 @@ input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies
 input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
 input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
 input bool   InpClusterNoSLBlocks  = true;  // Position ohne SL blockiert neue Trades
-input double InpMaxLotPerTrade     = 1.0;   // Lot-Kappung
+input double InpMaxRiskPctPerTrade = 2.0;   // Max. Risiko % pro Trade (Lot-Kappung, kapitalunabhaengig)
 input double InpFrictionSLMult     = 15.0;  // Mindest-Stop vs. Friktion
 input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
@@ -384,8 +384,7 @@ int OnInit(void)
                             InpUseSpreadFilter, InpMaxSpreadPoints,
                             InpUseSessionFilter, InpUseWeekdayFilter);
 
-   g_riskManager.Configure(_Symbol, InpRiskPctDipBuy, InpMaxLotPerTrade,
-                            AccountInfoDouble(ACCOUNT_EQUITY),
+   g_riskManager.Configure(_Symbol, InpRiskPctDipBuy, InpMaxRiskPctPerTrade,
                             InpFrictionSLMult, InpSlippageBufferPts);
    // Hinweis: m_riskPercent in RiskManager wird nur als Fallback genutzt;
    // der eigentliche per-Slot-Wert kommt via riskPercentOverride in ComputeLots.
