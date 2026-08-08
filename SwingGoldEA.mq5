@@ -1,18 +1,18 @@
 //+------------------------------------------------------------------+
 //|                                                    SwingGoldEA.mq5 |
-//|   Tier-1-EA: Struktureller Dip-Buy (D1/H4) + Overlap-Trendfolge  |
-//|   (H4-Bias/M15-Entry), beide in einem EA, einzeln abschaltbar.   |
+//|   Tier-1/2-EA: DipBuy (D1/H4), Overlap-Trendfolge (H4/M15),    |
+//|   LiquiditySweep-Reclaim (M15), einzeln abschaltbar.            |
 //|                                                                    |
 //|   Risiko wird ueber alle Strategien hinweg per ClusterRiskGuard   |
 //|   gemessen und begrenzt (strategies.md Teil F, ea.md 4.10).      |
 //|                                                                    |
-//|   Ausfuehrung ausschliesslich auf geschlossenen Bars (D1-Bias/   |
-//|   Setup, H4-Trigger fuer DipBuy; M15-Trigger fuer Overlap).     |
+//|   Ausfuehrung ausschliesslich auf geschlossenen Bars.            |
 //|   PollNewBars() latcht die Bar-Flags einmal pro Tick, alle       |
 //|   Is*Bar()-Aufrufe sind danach nicht-mutierend (Bugfix).        |
 //|                                                                    |
-//|   Default: InpUseOverlapModule=false (Hazard H14: bestehende    |
-//|   .set-Dateien wuerden sonst still zum Zwei-Modul-Lauf).        |
+//|   Default: InpUseOverlapModule=false, InpUseSweepModule=false   |
+//|   (Hazard H14: bestehende .set-Dateien wuerden sonst still      |
+//|   zum Mehr-Modul-Lauf).                                         |
 //|                                                                    |
 //|   ACHTUNG: Vor Echtgeld zwingend Out-of-Sample + Walk-Forward + |
 //|   Forward-Test (ea.md Abschnitt 8, Go-Live-Kette).             |
@@ -29,6 +29,7 @@
 #include "Include/SignalModuleBase.mqh"
 #include "Include/SignalDipBuy.mqh"
 #include "Include/SignalOverlapTrend.mqh"
+#include "Include/SignalLiquiditySweep.mqh"
 #include "Include/FilterStack.mqh"
 #include "Include/RiskManager.mqh"
 #include "Include/ClusterRiskGuard.mqh"
@@ -38,32 +39,38 @@
 #include "Include/TradeManager.mqh"
 #include "Include/DecisionLog.mqh"
 
+//====================== HARDCODED PARAMETER (optimiert 2020-2026) =
+// DipBuy
+const bool   DIPBUY_ALLOW_SHORT        = false;
+const int    DIPBUY_EMA_SLOW           = 200;
+const int    DIPBUY_EMA_MID            = 100;
+const int    DIPBUY_SWING_LOOKBACK     = 4;
+const int    DIPBUY_ATR_PERIOD         = 14;
+const double DIPBUY_ATR_STOP_MULT      = 2.25;
+const int    DIPBUY_ARMED_EXPIRY_BARS  = 10;
+const double DIPBUY_TRAIL_ATR_MULT     = 3.5;
+// Overlap
+const bool   OVERLAP_ALLOW_SHORT       = false;
+const int    OVERLAP_EMA_FAST_H4       = 30;
+const int    OVERLAP_EMA_SLOW_H4       = 150;
+const int    OVERLAP_PULLBACK_EMA_FAST = 15;
+const int    OVERLAP_PULLBACK_EMA_SLOW = 50;
+const int    OVERLAP_ATR_PERIOD_M15    = 14;
+const double OVERLAP_ATR_STOP_MULT     = 2.75;
+const int    OVERLAP_SWING_LOOKBACK    = 3;
+const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
+const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
+
 //====================== INPUTS ====================================
 
 input group "=== Module ==="
 input bool   InpUseDipBuyModule    = true;   // DipBuy-Strategie (D1/H4) aktiv
 input bool   InpUseOverlapModule   = false;  // Overlap-Strategie (H4-Bias/M15) aktiv - Default false (Hazard H14)
+input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
 
-input group "=== Strategie DipBuy ==="
-input bool   InpAllowShort         = false;  // Asymmetrie-Hypothese testbar (ea.md 2.2)
-input int    InpEmaSlow            = 200;    // D1-Trendfilter
-input int    InpEmaMid             = 100;    // [OPT] Ruecksetzer-Zone
-input int    InpSwingLookback      = 4;      // Fraktal-Breite Swing-Erkennung
-input int    InpAtrPeriod          = 14;     // ATR-Periode (D1)
-input double InpAtrStopMult        = 2.25;   // [OPT] Stop-Abstand (strategies.md: 1.5-2.0)
-input int    InpArmedExpiryBars    = 10;     // Verfall eines Setups (D1-Bars)
-
-input group "=== Strategie Overlap ==="
-input bool   InpOvAllowShort       = false;  // Short fuer Overlap (Asymmetrie-Hypothese)
-input int    InpOvEmaFastH4        = 30;     // H4-Bias EMA Fast
-input int    InpOvEmaSlowH4        = 150;    // H4-Bias EMA Slow
-input int    InpOvPullbackEmaFast  = 15;     // M15-Zone EMA Fast
-input int    InpOvPullbackEmaSlow  = 50;     // M15-Zone EMA Slow
-input int    InpOvAtrPeriodM15     = 14;     // ATR-Periode M15
-input double InpOvAtrStopMult      = 2.75;   // [OPT] Stop-Abstand M15 (1.5-2.0)
-input int    InpOvSwingLookbackM15 = 3;      // Fraktal-Breite M15
-input int    InpOvZoneExpiryBars   = 12;     // Verfall (M15-Bars)
-input double InpOvTrailAtrMult     = 4.0;    // Trailing-Abstand (ATR-M15)
+input group "=== Strategie LiquiditySweep ==="
+input bool   InpSwAllowShort   = false; // Short-Sweeps erlaubt
+input double InpSwAtrStopMult  = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -82,6 +89,7 @@ input int    InpMaxSpreadPoints    = 50;     // Friktionsgrenze (Points)
 input group "=== Risiko (uebergreifend) ==="
 input double InpRiskPctDipBuy      = 1.0;   // Risiko % je DipBuy-Trade (knowledge.md 4)
 input double InpRiskPctOverlap     = 1.0;   // Risiko % je Overlap-Trade
+input double InpRiskPctSweep       = 1.0;   // Risiko % je LiquiditySweep-Trade
 input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies.md Teil F)
 input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
 input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
@@ -92,10 +100,9 @@ input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
 input double InpMaxTotalDDPct      = 20.0;  // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
-input double InpTrailAtrMult       = 3.5;   // Trailing-Abstand (DipBuy, ATR-D1)
 
 input group "=== Infrastruktur ==="
-input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2
+input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3
 input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
 
 //====================== SLOT-KLASSE ===============================
@@ -133,7 +140,7 @@ public:
   };
 
 //====================== GLOBALE OBJEKTE ============================
-CStrategySlot    g_slots[2];          // 0=DipBuy, 1=Overlap (feste Reihenfolge, Hazard H10)
+CStrategySlot    g_slots[3];          // 0=DipBuy, 1=Overlap, 2=Sweep (feste Reihenfolge, Hazard H10)
 CSymbolResolver  g_symbolResolver;
 CTimeContext     g_timeContext;
 CMarketData      g_marketData;
@@ -309,25 +316,27 @@ int OnInit(void)
    //---    (muss VOR MarketData.Init sein, damit TF-Flags korrekt gesetzt werden)
    int  magicDipBuy  = MagicDipBuy(InpMagicBase);
    int  magicOverlap = MagicOverlapTrend(InpMagicBase);
+   int  magicSweep   = MagicLiquiditySweep(InpMagicBase);
    bool dipBuyHasPos  = PositionExistsForMagic(magicDipBuy);
    bool overlapHasPos = PositionExistsForMagic(magicOverlap);
+   bool sweepHasPos   = PositionExistsForMagic(magicSweep);
 
    bool needH4Emas = InpUseOverlapModule || overlapHasPos;
-   bool needM15    = InpUseOverlapModule || overlapHasPos;
+   bool needM15    = InpUseOverlapModule || overlapHasPos || InpUseSweepModule || sweepHasPos;
 
    //--- 4. MarketData mit TF-Konfiguration
    SMarketDataCfg mdCfg;
-   mdCfg.emaSlowPeriod      = InpEmaSlow;
-   mdCfg.emaMidPeriod       = InpEmaMid;
-   mdCfg.atrPeriod          = InpAtrPeriod;
-   mdCfg.swingLookback      = InpSwingLookback;
+   mdCfg.emaSlowPeriod      = DIPBUY_EMA_SLOW;
+   mdCfg.emaMidPeriod       = DIPBUY_EMA_MID;
+   mdCfg.atrPeriod          = DIPBUY_ATR_PERIOD;
+   mdCfg.swingLookback      = DIPBUY_SWING_LOOKBACK;
    mdCfg.useH4Emas          = needH4Emas;
-   mdCfg.emaFastH4Period    = InpOvEmaFastH4;
-   mdCfg.emaSlowH4Period    = InpOvEmaSlowH4;
+   mdCfg.emaFastH4Period    = OVERLAP_EMA_FAST_H4;
+   mdCfg.emaSlowH4Period    = OVERLAP_EMA_SLOW_H4;
    mdCfg.useM15             = needM15;
-   mdCfg.emaPullbackFastM15 = InpOvPullbackEmaFast;
-   mdCfg.emaPullbackSlowM15 = InpOvPullbackEmaSlow;
-   mdCfg.atrPeriodM15       = InpOvAtrPeriodM15;
+   mdCfg.emaPullbackFastM15 = OVERLAP_PULLBACK_EMA_FAST;
+   mdCfg.emaPullbackSlowM15 = OVERLAP_PULLBACK_EMA_SLOW;
+   mdCfg.atrPeriodM15       = OVERLAP_ATR_PERIOD_M15;
 
    if(!g_marketData.Init(_Symbol, mdCfg))
       return INIT_FAILED;
@@ -339,12 +348,12 @@ int OnInit(void)
    g_slots[0].enabled      = InpUseDipBuyModule;
    g_slots[0].magic        = magicDipBuy;
    g_slots[0].riskPct      = InpRiskPctDipBuy;
-   g_slots[0].trailAtrMult = InpTrailAtrMult;
+   g_slots[0].trailAtrMult = DIPBUY_TRAIL_ATR_MULT;
    g_slots[0].module       = new CSignalDipBuy();
 
    CSignalDipBuy *dipBuy = (CSignalDipBuy *)g_slots[0].module;
-   dipBuy.Configure(InpAllowShort, InpSwingLookback, InpAtrStopMult,
-                    InpArmedExpiryBars, magicDipBuy);
+   dipBuy.Configure(DIPBUY_ALLOW_SHORT, DIPBUY_SWING_LOOKBACK, DIPBUY_ATR_STOP_MULT,
+                    DIPBUY_ARMED_EXPIRY_BARS, magicDipBuy);
 
    g_slots[0].tracker.Configure(_Symbol, magicDipBuy);
    g_slots[0].exec.Configure(_Symbol, magicDipBuy,
@@ -361,12 +370,12 @@ int OnInit(void)
    g_slots[1].enabled      = InpUseOverlapModule;
    g_slots[1].magic        = magicOverlap;
    g_slots[1].riskPct      = InpRiskPctOverlap;
-   g_slots[1].trailAtrMult = InpOvTrailAtrMult;
+   g_slots[1].trailAtrMult = OVERLAP_TRAIL_ATR_MULT;
    g_slots[1].module       = new CSignalOverlapTrend();
 
    CSignalOverlapTrend *overlap = (CSignalOverlapTrend *)g_slots[1].module;
-   overlap.Configure(InpOvAllowShort, InpOvSwingLookbackM15, InpOvAtrStopMult,
-                     InpOvZoneExpiryBars, magicOverlap);
+   overlap.Configure(OVERLAP_ALLOW_SHORT, OVERLAP_SWING_LOOKBACK, OVERLAP_ATR_STOP_MULT,
+                     OVERLAP_ZONE_EXPIRY_BARS, magicOverlap);
 
    g_slots[1].tracker.Configure(_Symbol, magicOverlap);
    g_slots[1].exec.Configure(_Symbol, magicOverlap,
@@ -379,7 +388,28 @@ int OnInit(void)
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15); // ATR vom M15 fuer Overlap (strategies.md Teil D)
 
-   //--- 6c. Kontoweite Komponenten
+   //--- 6c. LiquiditySweep-Slot
+   g_slots[2].enabled      = InpUseSweepModule;
+   g_slots[2].magic        = magicSweep;
+   g_slots[2].riskPct      = InpRiskPctSweep;
+   g_slots[2].trailAtrMult = OVERLAP_TRAIL_ATR_MULT; // M15-ATR-Trailing wie Overlap
+   g_slots[2].module       = new CSignalLiquiditySweep();
+
+   CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
+   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, magicSweep);
+
+   g_slots[2].tracker.Configure(_Symbol, magicSweep);
+   g_slots[2].exec.Configure(_Symbol, magicSweep,
+                              g_symbolResolver.StopsLevelPoints(),
+                              g_symbolResolver.FreezeLevelPoints(),
+                              (int)MathRound(InpSlippageBufferPts),
+                              "SwingGoldSweep");
+   g_slots[2].manager.Configure(_Symbol, InpPartialPct, g_slots[2].trailAtrMult,
+                                 g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
+                                 g_symbolResolver.StopsLevelPoints(),
+                                 PERIOD_M15); // ATR vom M15 fuer Sweep
+
+   //--- 6d. Kontoweite Komponenten
    g_filterStack.Configure(_Symbol,
                             InpUseSpreadFilter, InpMaxSpreadPoints,
                             InpUseSessionFilter, InpUseWeekdayFilter);
@@ -400,7 +430,7 @@ int OnInit(void)
       Print("SwingGoldEA: DecisionLog konnte nicht initialisiert werden - Telemetrie deaktiviert.");
 
    //--- 7. Restart-Resilienz: offene eigene Positionen resynchronisieren
-   for(int i = 0; i < 2; i++)
+   for(int i = 0; i < 3; i++)
      {
       if(PositionExistsForMagic(g_slots[i].magic))
          SyncSlotFromBroker(g_slots[i]);
@@ -408,10 +438,11 @@ int OnInit(void)
 
    //--- 8. Init-Log (Beweis im Journal welche Konfiguration lief, Hazard H14)
    PrintFormat("SwingGoldEA v2 init OK | Symbol=%s | DipBuy=%s (Magic=%d) | Overlap=%s (Magic=%d) | "
-               "Equity=%.2f | ClusterDegraded=%s",
+               "Sweep=%s (Magic=%d) | Equity=%.2f | ClusterDegraded=%s",
                _Symbol,
                InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
                InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
+               InpUseSweepModule   ? "ON" : "OFF", magicSweep,
                AccountInfoDouble(ACCOUNT_EQUITY),
                g_clusterRiskGuard.IsDegraded() ? "true" : "false");
 
@@ -424,7 +455,7 @@ int OnInit(void)
 void OnDeinit(const int reason)
   {
    //--- Alle Slots freigeben (auch nicht-aktivierte, Hazard H2)
-   for(int i = 0; i < 2; i++)
+   for(int i = 0; i < 3; i++)
       g_slots[i].Release();
 
    g_marketData.Deinit();
@@ -485,9 +516,9 @@ void OnTick(void)
         }
      }
 
-   //--- Slot-Loop in fester Reihenfolge (0=DipBuy vor 1=Overlap, Hazard H10:
+   //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, Hazard H10:
    //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
-   for(int s = 0; s < 2; s++)
+   for(int s = 0; s < 3; s++)
      {
       ENUM_TIMEFRAMES trigTf = g_slots[s].module.TriggerTimeframe();
       ENUM_TIMEFRAMES atrTf  = g_slots[s].module.AtrTimeframe();
@@ -496,7 +527,7 @@ void OnTick(void)
       bool dataOk = true;
       if(!d1ReadOk)
          dataOk = false;
-      if(!h4ReadOk  && (trigTf == PERIOD_M15 || atrTf == PERIOD_M15))
+      if(!h4ReadOk  && (trigTf == PERIOD_H4  || atrTf == PERIOD_H4))
          dataOk = false;
       if(!m15ReadOk && (trigTf == PERIOD_M15 || atrTf == PERIOD_M15))
          dataOk = false;
