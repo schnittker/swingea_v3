@@ -59,13 +59,13 @@ const int    OVERLAP_ATR_PERIOD_M15    = 14;
 const double OVERLAP_ATR_STOP_MULT     = 2.75;
 const int    OVERLAP_SWING_LOOKBACK    = 3;
 const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
-const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
+const double OVERLAP_TRAIL_ATR_MULT    = 2.5;
 
 //====================== INPUTS ====================================
 
 input group "=== Module ==="
 input bool   InpUseDipBuyModule    = true;   // DipBuy-Strategie (D1/H4) aktiv
-input bool   InpUseOverlapModule   = false;  // Overlap-Strategie (H4-Bias/M15) aktiv - Default false (Hazard H14)
+input bool   InpUseOverlapModule   = true;   // Overlap-Strategie (H4-Bias/M15) aktiv
 input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
 
 input group "=== Strategie LiquiditySweep ==="
@@ -79,8 +79,8 @@ input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Swe
 input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
 
 input group "=== Zeit / Session ==="
-input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
-input bool   InpUseWeekdayFilter   = true;   // Montag/Freitag-Sperre (H-Test)
+input bool   InpUseSessionFilter   = false;  // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
+input bool   InpUseWeekdayFilter   = false;  // Montag/Freitag-Sperre (H-Test)
 input int    InpOverlapStartGmtHour = 12;    // Overlap-Fenster Start (GMT-Stunde, inkl.)
 input int    InpOverlapEndGmtHour  = 16;     // Overlap-Fenster Ende (GMT-Stunde, exkl.)
 input int    InpMondayStartGmtHour = 8;      // Montag: ab dieser GMT-Stunde erlaubt
@@ -89,8 +89,8 @@ input int    InpGmtOffsetWinter    = 2;      // Server-GMT-Offset Winter (ea.md 
 input int    InpGmtOffsetSummer    = 3;      // Server-GMT-Offset Sommer (ea.md 7.1)
 
 input group "=== Filter ==="
-input bool   InpUseSpreadFilter    = true;   // H-Test
-input int    InpMaxSpreadPoints    = 50;     // Friktionsgrenze (Points)
+input bool   InpUseSpreadFilter    = false;  // H-Test
+input int    InpMaxSpreadPoints    = 150;    // Friktionsgrenze (Points)
 
 input group "=== Risiko (uebergreifend) ==="
 input double InpRiskPctDipBuy      = 1.0;   // Risiko % je DipBuy-Trade (knowledge.md 4)
@@ -104,7 +104,7 @@ input double InpMaxRiskPctPerTrade = 2.0;   // Max. Risiko % pro Trade (Lot-Kapp
 input double InpFrictionSLMult     = 15.0;  // Mindest-Stop vs. Friktion
 input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
-input double InpMaxTotalDDPct      = 20.0;  // Gesamt-Kill-Switch
+input double InpMaxTotalDDPct      = 100.0; // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
 
 input group "=== Infrastruktur ==="
