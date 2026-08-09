@@ -29,12 +29,14 @@ private:
    double            m_atrStopMult;
    int               m_reclaimBars;    // Max. M15-Bars bis Reclaim
    int               m_levelLookback;  // Anzahl D1-Bars rueckwaerts (1..n)
+   int               m_cooldownBars;   // D1-Bars Pause nach Trade-Abschluss
 
    //--- gemerkte Level des getriggerten Setups
    double            m_hitLevel;       // D1Low (Long) oder D1High (Short) das getroffen wurde
    double            m_targetLevel;    // gegenuberliegende Seite desselben Tages
    double            m_sweepExtreme;   // tiefstes Low / hoechstes High der Sweep-Bar
    int               m_reclaimCounter;
+   int               m_cooldownCounter; // verbleibende D1-Bars Cooldown
 
    //+------------------------------------------------------------------+
    //| Sucht das naechstgelegene D1-Level das von M15[1] gesweept      |
@@ -157,18 +159,21 @@ public:
                         m_atrStopMult(1.5),
                         m_reclaimBars(3),
                         m_levelLookback(3),
+                        m_cooldownBars(1),
                         m_hitLevel(0.0), m_targetLevel(0.0),
-                        m_sweepExtreme(0.0), m_reclaimCounter(0) {}
+                        m_sweepExtreme(0.0), m_reclaimCounter(0),
+                        m_cooldownCounter(0) {}
 
    void              Configure(const bool allowShort, const double atrStopMult,
                                const int reclaimBars, const int levelLookback,
-                               const int magic)
+                               const int cooldownBars, const int magic)
      {
-      m_allowShort    = allowShort;
-      m_atrStopMult   = atrStopMult;
-      m_reclaimBars   = reclaimBars;
-      m_levelLookback = levelLookback;
-      m_magic         = magic;
+      m_allowShort     = allowShort;
+      m_atrStopMult    = atrStopMult;
+      m_reclaimBars    = reclaimBars;
+      m_levelLookback  = levelLookback;
+      m_cooldownBars   = cooldownBars;
+      m_magic          = magic;
      }
 
    virtual string           Name(void)              const { return "SignalLiquiditySweep"; }
@@ -205,6 +210,13 @@ public:
 
       if(m_state == ST_IDLE)
         {
+         //--- Cooldown: nach Trade-Abschluss fuer m_cooldownBars*96 M15-Bars pausieren
+         if(m_cooldownCounter > 0)
+           {
+            m_cooldownCounter--;
+            return false;
+           }
+
          if(!md.IsD1Valid())
             return false;
 
@@ -237,6 +249,26 @@ public:
         }
 
       return false;
+     }
+
+   //--- Cooldown starten wenn Position geschlossen oder Order fehlgeschlagen
+   virtual void      NotifyPositionClosed(void)
+     {
+      m_cooldownCounter = m_cooldownBars * 96; // 1 D1-Bar = 96 M15-Bars
+      ResetToIdle("Position geschlossen");
+     }
+
+   virtual void      NotifyOrderFailed(void)
+     {
+      m_cooldownCounter = m_cooldownBars * 96;
+      ResetToIdle("Order fehlgeschlagen");
+     }
+
+   virtual void      NotifyFilterVeto(void)
+     {
+      m_cooldownCounter = m_cooldownBars * 96;
+      m_state = ST_BLOCKED;
+      ResetToIdle("FilterStack-Veto");
      }
   };
 
