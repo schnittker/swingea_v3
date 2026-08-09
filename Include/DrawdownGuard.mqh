@@ -84,6 +84,31 @@ public:
      }
 
    //+------------------------------------------------------------------+
+   //| Gibt den Risiko-Skalierungsfaktor basierend auf dem laufenden   |
+   //| Gesamt-DD vom Peak zurueck:                                     |
+   //|   DD <  2% -> 1.00 (volles Risiko)                              |
+   //|   DD <  4% -> 0.50 (halbiertes Risiko)                          |
+   //|   DD >= 4% -> 0.25 (stark reduziertes Risiko)                   |
+   //+------------------------------------------------------------------+
+   double            GetRiskScale(void) const
+     {
+      string peakEqVar = VarPeakEq();
+      if(!GlobalVariableCheck(peakEqVar))
+         return 1.0;
+
+      double peakEquity = GlobalVariableGet(peakEqVar);
+      if(peakEquity <= 0.0)
+         return 1.0;
+
+      double equity    = AccountInfoDouble(ACCOUNT_EQUITY);
+      double ddPct     = (peakEquity - equity) / peakEquity * 100.0;
+
+      if(ddPct < 2.0) return 1.00;
+      if(ddPct < 4.0) return 0.50;
+      return 0.25;
+     }
+
+   //+------------------------------------------------------------------+
    //| Veto fuer NEUE Trades. true = erlaubt, false = gesperrt          |
    //| (outReason gefuellt).                                            |
    //+------------------------------------------------------------------+

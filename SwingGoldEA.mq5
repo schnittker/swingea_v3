@@ -242,11 +242,13 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
       g_riskManager.EnforceMinStopDistance(proposal.dir, refPrice, stopPrice,
                                            g_symbolResolver.StopsLevelPoints());
 
+      double riskScale  = g_drawdownGuard.GetRiskScale();
+      double scaledRisk = slot.riskPct * riskScale;
       lots = g_riskManager.ComputeLots(refPrice, stopPrice,
                                        g_symbolResolver.VolumeMin(),
                                        g_symbolResolver.VolumeMax(),
                                        g_symbolResolver.VolumeStep(),
-                                       slot.riskPct);
+                                       scaledRisk);
 
       if(lots <= 0.0)
         {
