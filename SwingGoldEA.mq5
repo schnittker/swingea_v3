@@ -59,7 +59,7 @@ const int    OVERLAP_ATR_PERIOD_M15    = 14;
 const double OVERLAP_ATR_STOP_MULT     = 2.75;
 const int    OVERLAP_SWING_LOOKBACK    = 3;
 const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
-const double OVERLAP_TRAIL_ATR_MULT    = 2.5;
+const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
 
 //====================== INPUTS ====================================
 
