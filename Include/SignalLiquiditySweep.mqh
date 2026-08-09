@@ -1,20 +1,20 @@
 //+------------------------------------------------------------------+
 //|                                        SignalLiquiditySweep.mqh  |
 //|   Tier-2.1-Strategie: Liquidity-Sweep-Reclaim.                  |
-//|   Levels: D1 High/Low der letzten m_levelLookback Tage          |
-//|   (Default 3: Vortag, Vorvor-, Vorvorvor-Tag).                  |
+//|   Levels: D1 High/Low der letzten m_levelLookback Tage.         |
 //|                                                                   |
 //|   Zwei-Phasen-Logik:                                             |
 //|   Phase 1 — Sweep erkannt (ST_ARMED):                           |
-//|     Long:  M15[1].Low  < irgendein D1Low[1..n]                  |
-//|     Short: M15[1].High > irgendein D1High[1..n]                 |
-//|     Das naechste (naechstgelegene) getroffene Level gewinnt.    |
+//|     Long:  M15[1].Low  < D1Low[n]  UND Tiefe >= minSweepAtr*ATR |
+//|     Short: M15[1].High > D1High[n] UND Tiefe >= minSweepAtr*ATR |
+//|     Das naechstgelegene qualifizierte Level gewinnt.            |
 //|   Phase 2 — Reclaim in den naechsten m_reclaimBars M15-Bars:   |
 //|     Long:  M15[1].Close > getroffenes Level                     |
 //|     Short: M15[1].Close < getroffenes Level                     |
 //|                                                                   |
-//|   Stop: SweepExtrem +/- atrStopMult * ATR(M15)                  |
-//|   Ziel: gegenuberliegende Seite des getroffenen Tages.          |
+//|   Stop:     SweepExtrem +/- atrStopMult * ATR(M15)              |
+//|   Ziel:     gegenuberliegende Seite des getroffenen Tages.      |
+//|   Cooldown: m_cooldownBars D1-Bars nach jedem Abschluss.        |
 //|   SessionRestricted: false.                                      |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
@@ -27,21 +27,22 @@ class CSignalLiquiditySweep : public CSignalModuleBase
 private:
    bool              m_allowShort;
    double            m_atrStopMult;
-   int               m_reclaimBars;    // Max. M15-Bars bis Reclaim
-   int               m_levelLookback;  // Anzahl D1-Bars rueckwaerts (1..n)
-   int               m_cooldownBars;   // D1-Bars Pause nach Trade-Abschluss
+   double            m_minSweepAtrMult;  // Mindest-Sweep-Tiefe in ATR-Vielfachen
+   int               m_reclaimBars;      // Max. M15-Bars bis Reclaim
+   int               m_levelLookback;    // D1-Bars rueckwaerts als aktive Levels
+   int               m_cooldownBars;     // D1-Bars Pause nach Abschluss
 
-   //--- gemerkte Level des getriggerten Setups
-   double            m_hitLevel;       // D1Low (Long) oder D1High (Short) das getroffen wurde
-   double            m_targetLevel;    // gegenuberliegende Seite desselben Tages
-   double            m_sweepExtreme;   // tiefstes Low / hoechstes High der Sweep-Bar
+   //--- gemerkte Werte des aktiven Setups
+   double            m_hitLevel;         // D1Low/High das getroffen wurde
+   double            m_targetLevel;      // gegenuberliegende Seite desselben Tages
+   double            m_sweepExtreme;     // tiefstes Low / hoechstes High der Sweep-Bar
    int               m_reclaimCounter;
-   int               m_cooldownCounter; // verbleibende D1-Bars Cooldown
+   int               m_cooldownCounter;  // verbleibende M15-Bars Cooldown
 
    //+------------------------------------------------------------------+
-   //| Sucht das naechstgelegene D1-Level das von M15[1] gesweept      |
-   //| wurde. "Naechstgelegen" = geringstem Abstand zum aktuellen Kurs.|
-   //| Gibt Level und Gegenseite desselben Tages zurueck.              |
+   //| Sucht das naechstgelegene D1-Level das von M15[1] mit            |
+   //| ausreichender Tiefe (>= minSweepAtr * ATR) gesweept wurde.      |
+   //| "Naechstgelegen" = geringster Abstand Level <-> SweepExtrem.    |
    //+------------------------------------------------------------------+
    bool              FindSweepedLevel(CMarketData &md, const ENUM_SIGNAL_DIR dir,
                                       double &outSweepExtreme,
@@ -50,6 +51,9 @@ private:
       double low1, high1;
       if(!md.GetLow(PERIOD_M15,  1, low1))  return false;
       if(!md.GetHigh(PERIOD_M15, 1, high1)) return false;
+
+      double atr      = md.GetAtrM15();
+      double minDepth = m_minSweepAtrMult * atr; // Mindesttiefe des Sweeps
 
       double bestDist = DBL_MAX;
       bool   found    = false;
@@ -63,33 +67,31 @@ private:
 
          if(dir == SIGNAL_LONG)
            {
-            //--- Sweep: M15-Low durchsticht D1Low dieses Tages
-            if(low1 < dLow)
+            double depth = dLow - low1; // positiv wenn low1 < dLow
+            if(depth >= minDepth)
               {
-               double dist = dLow - low1; // wie tief unter dem Level
-               if(dist < bestDist)
+               if(depth < bestDist)
                  {
-                  bestDist       = dist;
+                  bestDist        = depth;
                   outSweepExtreme = low1;
-                  outHitLevel    = dLow;
-                  outTargetLevel = dHigh; // Ziel: Hoechstkurs desselben Tages
-                  found          = true;
+                  outHitLevel     = dLow;
+                  outTargetLevel  = dHigh;
+                  found           = true;
                  }
               }
            }
          else
            {
-            //--- Sweep: M15-High durchsticht D1High dieses Tages
-            if(high1 > dHigh)
+            double depth = high1 - dHigh; // positiv wenn high1 > dHigh
+            if(depth >= minDepth)
               {
-               double dist = high1 - dHigh;
-               if(dist < bestDist)
+               if(depth < bestDist)
                  {
-                  bestDist       = dist;
+                  bestDist        = depth;
                   outSweepExtreme = high1;
-                  outHitLevel    = dHigh;
-                  outTargetLevel = dLow;  // Ziel: Tiefstkurs desselben Tages
-                  found          = true;
+                  outHitLevel     = dHigh;
+                  outTargetLevel  = dLow;
+                  found           = true;
                  }
               }
            }
@@ -98,9 +100,6 @@ private:
       return found;
      }
 
-   //+------------------------------------------------------------------+
-   //| Reclaim: Close[1] wieder auf der richtigen Seite des Levels.   |
-   //+------------------------------------------------------------------+
    bool              CheckReclaim(CMarketData &md)
      {
       double open1, close1;
@@ -152,28 +151,36 @@ private:
                   dir, sweepExtreme, hitLevel, targetLevel);
      }
 
+   void              StartCooldown(void)
+     {
+      m_cooldownCounter = m_cooldownBars * 96; // 1 D1-Bar = 96 M15-Bars (24h / 15min)
+     }
+
 public:
                      CSignalLiquiditySweep(void):
                         CSignalModuleBase(),
                         m_allowShort(false),
                         m_atrStopMult(1.5),
+                        m_minSweepAtrMult(0.5),
                         m_reclaimBars(3),
                         m_levelLookback(3),
-                        m_cooldownBars(1),
+                        m_cooldownBars(2),
                         m_hitLevel(0.0), m_targetLevel(0.0),
                         m_sweepExtreme(0.0), m_reclaimCounter(0),
                         m_cooldownCounter(0) {}
 
    void              Configure(const bool allowShort, const double atrStopMult,
-                               const int reclaimBars, const int levelLookback,
-                               const int cooldownBars, const int magic)
+                               const double minSweepAtrMult, const int reclaimBars,
+                               const int levelLookback, const int cooldownBars,
+                               const int magic)
      {
-      m_allowShort     = allowShort;
-      m_atrStopMult    = atrStopMult;
-      m_reclaimBars    = reclaimBars;
-      m_levelLookback  = levelLookback;
-      m_cooldownBars   = cooldownBars;
-      m_magic          = magic;
+      m_allowShort      = allowShort;
+      m_atrStopMult     = atrStopMult;
+      m_minSweepAtrMult = minSweepAtrMult;
+      m_reclaimBars     = reclaimBars;
+      m_levelLookback   = levelLookback;
+      m_cooldownBars    = cooldownBars;
+      m_magic           = magic;
      }
 
    virtual string           Name(void)              const { return "SignalLiquiditySweep"; }
@@ -210,7 +217,6 @@ public:
 
       if(m_state == ST_IDLE)
         {
-         //--- Cooldown: nach Trade-Abschluss fuer m_cooldownBars*96 M15-Bars pausieren
          if(m_cooldownCounter > 0)
            {
             m_cooldownCounter--;
@@ -251,22 +257,21 @@ public:
       return false;
      }
 
-   //--- Cooldown starten wenn Position geschlossen oder Order fehlgeschlagen
    virtual void      NotifyPositionClosed(void)
      {
-      m_cooldownCounter = m_cooldownBars * 96; // 1 D1-Bar = 96 M15-Bars
+      StartCooldown();
       ResetToIdle("Position geschlossen");
      }
 
    virtual void      NotifyOrderFailed(void)
      {
-      m_cooldownCounter = m_cooldownBars * 96;
+      StartCooldown();
       ResetToIdle("Order fehlgeschlagen");
      }
 
    virtual void      NotifyFilterVeto(void)
      {
-      m_cooldownCounter = m_cooldownBars * 96;
+      StartCooldown();
       m_state = ST_BLOCKED;
       ResetToIdle("FilterStack-Veto");
      }

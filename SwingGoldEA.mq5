@@ -69,11 +69,12 @@ input bool   InpUseOverlapModule   = false;  // Overlap-Strategie (H4-Bias/M15) 
 input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
 
 input group "=== Strategie LiquiditySweep ==="
-input bool   InpSwAllowShort    = false; // Short-Sweeps erlaubt
-input double InpSwAtrStopMult   = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
-input int    InpSwReclaimBars   = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
-input int    InpSwLevelLookback = 3;    // D1-Bars rueckwaerts als aktive Levels (1=nur Vortag)
-input int    InpSwCooldownBars  = 1;    // D1-Bars Pause nach jedem Trade/Veto
+input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
+input double InpSwAtrStopMult     = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
+input double InpSwMinSweepAtrMult = 0.5;  // Mindest-Sweep-Tiefe (ATR-M15-Vielfaches)
+input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
+input int    InpSwLevelLookback   = 3;    // D1-Bars rueckwaerts als aktive Levels
+input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -399,8 +400,8 @@ int OnInit(void)
    g_slots[2].module       = new CSignalLiquiditySweep();
 
    CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
-   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwReclaimBars, InpSwLevelLookback,
-                   InpSwCooldownBars, magicSweep);
+   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwMinSweepAtrMult,
+                   InpSwReclaimBars, InpSwLevelLookback, InpSwCooldownBars, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
