@@ -1,24 +1,21 @@
 //+------------------------------------------------------------------+
 //|                                        SignalLiquiditySweep.mqh  |
 //|   Tier-2.1-Strategie: Liquidity-Sweep-Reclaim.                  |
-//|   Levels: D1 High/Low der letzten m_levelLookback Tage,         |
-//|   aber NUR wenn das Level selbst nahe einer runden Zahl liegt   |
-//|   (Vielfaches von m_roundStep, Default 50.0 fuer XAUUSD).      |
+//|   Levels: W1 High/Low, MN1 High/Low, Yearly High/Low            |
+//|   (Jahreshoch/-tief via 13 abgeschlossene MN1-Bars).            |
 //|                                                                   |
 //|   Zwei-Phasen-Logik:                                             |
 //|   Phase 1 — Sweep erkannt (ST_ARMED):                           |
-//|     Long:  M15[1].Low  < D1Low[n]  UND Tiefe >= minSweepAtr*ATR |
-//|             UND D1Low[n] liegt nahe einer runden Zahl           |
-//|     Short: M15[1].High > D1High[n] UND Tiefe >= minSweepAtr*ATR |
-//|             UND D1High[n] liegt nahe einer runden Zahl          |
+//|     Long:  M15[1].Low  < Level UND Tiefe >= minSweepAtr*ATR     |
+//|     Short: M15[1].High > Level UND Tiefe >= minSweepAtr*ATR     |
 //|     Das naechstgelegene qualifizierte Level gewinnt.            |
 //|   Phase 2 — Reclaim in den naechsten m_reclaimBars M15-Bars:   |
 //|     Long:  M15[1].Close > getroffenes Level                     |
 //|     Short: M15[1].Close < getroffenes Level                     |
 //|                                                                   |
 //|   Stop:     SweepExtrem +/- atrStopMult * ATR(M15)              |
-//|   Ziel:     gegenuberliegende Seite des getroffenen Tages.      |
-//|   Cooldown: m_cooldownBars D1-Bars nach jedem Abschluss.        |
+//|   Ziel:     gegenuberliegende Seite desselben Levels.           |
+//|   Cooldown: m_cooldownBars * 96 M15-Bars nach jedem Abschluss.  |
 //|   SessionRestricted: false.                                      |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
@@ -32,42 +29,72 @@ private:
    bool              m_allowShort;
    double            m_atrStopMult;
    double            m_minSweepAtrMult;  // Mindest-Sweep-Tiefe in ATR-Vielfachen
-   double            m_roundStep;        // Schrittweite runder Zahlen (z.B. 50.0 fuer XAUUSD)
-   double            m_roundTolerance;   // Max. Abstand Level <-> naechste runde Zahl (ATR-Vielfaches)
+   bool              m_useWeekly;        // W1 High/Low als Levels verwenden
+   bool              m_useMonthly;       // MN1 High/Low als Levels verwenden
+   bool              m_useYearly;        // Yearly High/Low (13 MN1-Bars) als Levels verwenden
    int               m_reclaimBars;      // Max. M15-Bars bis Reclaim
-   int               m_levelLookback;    // D1-Bars rueckwaerts als aktive Levels
-   int               m_cooldownBars;     // D1-Bars Pause nach Abschluss
+   int               m_cooldownBars;     // D1-Bars Pause nach Abschluss (in 96 M15-Bars je Bar)
 
    //--- gemerkte Werte des aktiven Setups
-   double            m_hitLevel;         // D1Low/High das getroffen wurde
-   double            m_targetLevel;      // gegenuberliegende Seite desselben Tages
+   double            m_hitLevel;         // Level das getroffen wurde
+   double            m_targetLevel;      // gegenuberliegende Seite desselben Levels
    double            m_sweepExtreme;     // tiefstes Low / hoechstes High der Sweep-Bar
+   string            m_levelType;        // z.B. "W1-High", "MN1-Low", "Yearly-High"
    int               m_reclaimCounter;
    int               m_cooldownCounter;  // verbleibende M15-Bars Cooldown
 
    //+------------------------------------------------------------------+
-   //| Prueft ob ein Preis-Level nahe einer runden Zahl liegt.        |
-   //| "Nahe" = Abstand <= m_roundTolerance * ATR(M15).               |
-   //| Deaktiviert wenn m_roundStep <= 0.                              |
+   //| Holt W1 High und Low der letzten abgeschlossenen Woche.         |
    //+------------------------------------------------------------------+
-   bool              IsNearRoundNumber(const double level, const double atr) const
+   bool              GetW1Levels(double &outHigh, double &outLow) const
      {
-      if(m_roundStep <= 0.0) return true; // Filter deaktiviert
-
-      double nearest = MathRound(level / m_roundStep) * m_roundStep;
-      double dist    = MathAbs(level - nearest);
-      return (dist <= m_roundTolerance * atr);
+      double hBuf[1], lBuf[1];
+      if(CopyHigh(_Symbol, PERIOD_W1, 1, 1, hBuf) != 1) return false;
+      if(CopyLow (_Symbol, PERIOD_W1, 1, 1, lBuf) != 1) return false;
+      outHigh = hBuf[0];
+      outLow  = lBuf[0];
+      return (outHigh > 0.0 && outLow > 0.0 && outHigh > outLow);
      }
 
    //+------------------------------------------------------------------+
-   //| Sucht das naechstgelegene D1-Level das von M15[1] mit            |
-   //| ausreichender Tiefe (>= minSweepAtr * ATR) gesweept wurde       |
-   //| UND nahe einer runden Zahl liegt.                               |
+   //| Holt MN1 High und Low des letzten abgeschlossenen Monats.       |
+   //+------------------------------------------------------------------+
+   bool              GetMN1Levels(double &outHigh, double &outLow) const
+     {
+      double hBuf[1], lBuf[1];
+      if(CopyHigh(_Symbol, PERIOD_MN1, 1, 1, hBuf) != 1) return false;
+      if(CopyLow (_Symbol, PERIOD_MN1, 1, 1, lBuf) != 1) return false;
+      outHigh = hBuf[0];
+      outLow  = lBuf[0];
+      return (outHigh > 0.0 && outLow > 0.0 && outHigh > outLow);
+     }
+
+   //+------------------------------------------------------------------+
+   //| Holt Jahreshoch/-tief aus 13 abgeschlossenen MN1-Bars.          |
+   //| PERIOD_Y1 existiert in MT5 nicht; 13 MN1-Bars ab shift=1        |
+   //| decken ~1 Jahr ab.                                               |
+   //+------------------------------------------------------------------+
+   bool              GetYearlyLevels(double &outHigh, double &outLow) const
+     {
+      double hBuf[13], lBuf[13];
+      if(CopyHigh(_Symbol, PERIOD_MN1, 1, 13, hBuf) != 13) return false;
+      if(CopyLow (_Symbol, PERIOD_MN1, 1, 13, lBuf) != 13) return false;
+      int hiIdx = ArrayMaximum(hBuf, 0, 13);
+      int loIdx = ArrayMinimum(lBuf, 0, 13);
+      outHigh = hBuf[hiIdx];
+      outLow  = lBuf[loIdx];
+      return (outHigh > 0.0 && outLow > 0.0 && outHigh > outLow);
+     }
+
+   //+------------------------------------------------------------------+
+   //| Sucht das naechstgelegene Level das von M15[1] mit ausreichender |
+   //| Tiefe (>= minSweepAtr * ATR) gesweept wurde.                    |
    //| "Naechstgelegen" = geringster Abstand Level <-> SweepExtrem.    |
    //+------------------------------------------------------------------+
    bool              FindSweepedLevel(CMarketData &md, const ENUM_SIGNAL_DIR dir,
                                       double &outSweepExtreme,
-                                      double &outHitLevel, double &outTargetLevel)
+                                      double &outHitLevel, double &outTargetLevel,
+                                      string &outLevelType)
      {
       double low1, high1;
       if(!md.GetLow(PERIOD_M15,  1, low1))  return false;
@@ -76,42 +103,75 @@ private:
       double atr      = md.GetAtrM15();
       double minDepth = m_minSweepAtrMult * atr;
 
+      //--- Bis zu 6 Levels sammeln: W1H, W1L, MN1H, MN1L, YearH, YearL
+      double levels [6];
+      double targets[6];
+      string labels [6];
+      int    count = 0;
+
+      double w1H, w1L, mn1H, mn1L, yrH, yrL;
+
+      if(m_useWeekly && GetW1Levels(w1H, w1L))
+        {
+         levels[count]  = w1H; targets[count]  = w1L; labels[count]  = "W1-High";  count++;
+         levels[count]  = w1L; targets[count]  = w1H; labels[count]  = "W1-Low";   count++;
+        }
+
+      if(m_useMonthly && GetMN1Levels(mn1H, mn1L))
+        {
+         levels[count]  = mn1H; targets[count]  = mn1L; labels[count]  = "MN1-High"; count++;
+         levels[count]  = mn1L; targets[count]  = mn1H; labels[count]  = "MN1-Low";  count++;
+        }
+
+      if(m_useYearly && GetYearlyLevels(yrH, yrL))
+        {
+         levels[count]  = yrH; targets[count]  = yrL; labels[count]  = "Yearly-High"; count++;
+         levels[count]  = yrL; targets[count]  = yrH; labels[count]  = "Yearly-Low";  count++;
+        }
+
+      if(count == 0) return false;
+
       double bestDist = DBL_MAX;
       bool   found    = false;
 
-      for(int shift = 1; shift <= m_levelLookback; shift++)
+      for(int i = 0; i < count; i++)
         {
-         double dHigh, dLow;
-         if(!md.GetHighD1(shift, dHigh)) continue;
-         if(!md.GetLowD1(shift,  dLow))  continue;
-         if(dHigh <= 0.0 || dLow <= 0.0 || dHigh <= dLow) continue;
+         double lvl    = levels[i];
+         double target = targets[i];
+         string lbl    = labels[i];
 
          if(dir == SIGNAL_LONG)
            {
-            double depth = dLow - low1;
-            if(depth >= minDepth && IsNearRoundNumber(dLow, atr))
+            //--- Nur Low-Levels koennen von unten gesweept werden
+            if(StringFind(lbl, "-Low") < 0) continue;
+            double depth = lvl - low1;
+            if(depth >= minDepth)
               {
                if(depth < bestDist)
                  {
                   bestDist        = depth;
                   outSweepExtreme = low1;
-                  outHitLevel     = dLow;
-                  outTargetLevel  = dHigh;
+                  outHitLevel     = lvl;
+                  outTargetLevel  = target;
+                  outLevelType    = lbl;
                   found           = true;
                  }
               }
            }
          else
            {
-            double depth = high1 - dHigh;
-            if(depth >= minDepth && IsNearRoundNumber(dHigh, atr))
+            //--- Nur High-Levels koennen von oben gesweept werden
+            if(StringFind(lbl, "-High") < 0) continue;
+            double depth = high1 - lvl;
+            if(depth >= minDepth)
               {
                if(depth < bestDist)
                  {
                   bestDist        = depth;
                   outSweepExtreme = high1;
-                  outHitLevel     = dHigh;
-                  outTargetLevel  = dLow;
+                  outHitLevel     = lvl;
+                  outTargetLevel  = target;
+                  outLevelType    = lbl;
                   found           = true;
                  }
               }
@@ -146,30 +206,32 @@ private:
       if(m_dir == SIGNAL_LONG)
         {
          outProposal.stopPrice = m_sweepExtreme - m_atrStopMult * atr;
-         outProposal.reason    = "Sweep Long: Reclaim ueber D1Low";
+         outProposal.reason    = StringFormat("Sweep Long: Reclaim ueber %s", m_levelType);
         }
       else
         {
          outProposal.stopPrice = m_sweepExtreme + m_atrStopMult * atr;
-         outProposal.reason    = "Sweep Short: Reclaim unter D1High";
+         outProposal.reason    = StringFormat("Sweep Short: Reclaim unter %s", m_levelType);
         }
 
-      PrintFormat("SignalLiquiditySweep: ST_PENDING dir=%d sweepExtreme=%.5f hitLevel=%.5f stop=%.5f target=%.5f reclaimBar=%d",
-                  m_dir, m_sweepExtreme, m_hitLevel,
+      PrintFormat("SignalLiquiditySweep: ST_PENDING levelType=%s dir=%d sweepExtreme=%.5f hitLevel=%.5f stop=%.5f target=%.5f reclaimBar=%d",
+                  m_levelType, m_dir, m_sweepExtreme, m_hitLevel,
                   outProposal.stopPrice, outProposal.targetPrice, m_reclaimCounter);
      }
 
    void              ArmSweep(const ENUM_SIGNAL_DIR dir, const double sweepExtreme,
-                              const double hitLevel, const double targetLevel)
+                              const double hitLevel, const double targetLevel,
+                              const string levelType)
      {
       m_dir            = dir;
       m_sweepExtreme   = sweepExtreme;
       m_hitLevel       = hitLevel;
       m_targetLevel    = targetLevel;
+      m_levelType      = levelType;
       m_reclaimCounter = 0;
       m_state          = ST_ARMED;
-      PrintFormat("SignalLiquiditySweep: ST_ARMED dir=%d sweepExtreme=%.5f hitLevel=%.5f target=%.5f",
-                  dir, sweepExtreme, hitLevel, targetLevel);
+      PrintFormat("SignalLiquiditySweep: ST_ARMED levelType=%s dir=%d sweepExtreme=%.5f hitLevel=%.5f target=%.5f",
+                  levelType, dir, sweepExtreme, hitLevel, targetLevel);
      }
 
    void              StartCooldown(void)
@@ -183,28 +245,28 @@ public:
                         m_allowShort(false),
                         m_atrStopMult(1.5),
                         m_minSweepAtrMult(0.5),
-                        m_roundStep(50.0),
-                        m_roundTolerance(1.0),
+                        m_useWeekly(true),
+                        m_useMonthly(true),
+                        m_useYearly(true),
                         m_reclaimBars(3),
-                        m_levelLookback(3),
                         m_cooldownBars(2),
                         m_hitLevel(0.0), m_targetLevel(0.0),
-                        m_sweepExtreme(0.0), m_reclaimCounter(0),
-                        m_cooldownCounter(0) {}
+                        m_sweepExtreme(0.0), m_levelType(""),
+                        m_reclaimCounter(0), m_cooldownCounter(0) {}
 
    void              Configure(const bool allowShort, const double atrStopMult,
-                               const double minSweepAtrMult, const double roundStep,
-                               const double roundTolerance, const int reclaimBars,
-                               const int levelLookback, const int cooldownBars,
+                               const double minSweepAtrMult,
+                               const bool useWeekly, const bool useMonthly, const bool useYearly,
+                               const int reclaimBars, const int cooldownBars,
                                const int magic)
      {
       m_allowShort      = allowShort;
       m_atrStopMult     = atrStopMult;
       m_minSweepAtrMult = minSweepAtrMult;
-      m_roundStep       = roundStep;
-      m_roundTolerance  = roundTolerance;
+      m_useWeekly       = useWeekly;
+      m_useMonthly      = useMonthly;
+      m_useYearly       = useYearly;
       m_reclaimBars     = reclaimBars;
-      m_levelLookback   = levelLookback;
       m_cooldownBars    = cooldownBars;
       m_magic           = magic;
      }
@@ -253,10 +315,11 @@ public:
             return false;
 
          double sweepExtreme = 0.0, hitLevel = 0.0, targetLevel = 0.0;
+         string levelType = "";
 
-         if(FindSweepedLevel(md, SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel))
+         if(FindSweepedLevel(md, SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType))
            {
-            ArmSweep(SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel);
+            ArmSweep(SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType);
             if(CheckReclaim(md))
               {
                BuildProposal(md, outProposal);
@@ -267,9 +330,9 @@ public:
            }
 
          if(m_allowShort &&
-            FindSweepedLevel(md, SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel))
+            FindSweepedLevel(md, SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType))
            {
-            ArmSweep(SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel);
+            ArmSweep(SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType);
             if(CheckReclaim(md))
               {
                BuildProposal(md, outProposal);
