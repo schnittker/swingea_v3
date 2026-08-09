@@ -1,12 +1,16 @@
 //+------------------------------------------------------------------+
 //|                                        SignalLiquiditySweep.mqh  |
 //|   Tier-2.1-Strategie: Liquidity-Sweep-Reclaim.                  |
-//|   Levels: D1 High/Low der letzten m_levelLookback Tage.         |
+//|   Levels: D1 High/Low der letzten m_levelLookback Tage,         |
+//|   aber NUR wenn das Level selbst nahe einer runden Zahl liegt   |
+//|   (Vielfaches von m_roundStep, Default 50.0 fuer XAUUSD).      |
 //|                                                                   |
 //|   Zwei-Phasen-Logik:                                             |
 //|   Phase 1 — Sweep erkannt (ST_ARMED):                           |
 //|     Long:  M15[1].Low  < D1Low[n]  UND Tiefe >= minSweepAtr*ATR |
+//|             UND D1Low[n] liegt nahe einer runden Zahl           |
 //|     Short: M15[1].High > D1High[n] UND Tiefe >= minSweepAtr*ATR |
+//|             UND D1High[n] liegt nahe einer runden Zahl          |
 //|     Das naechstgelegene qualifizierte Level gewinnt.            |
 //|   Phase 2 — Reclaim in den naechsten m_reclaimBars M15-Bars:   |
 //|     Long:  M15[1].Close > getroffenes Level                     |
@@ -28,6 +32,8 @@ private:
    bool              m_allowShort;
    double            m_atrStopMult;
    double            m_minSweepAtrMult;  // Mindest-Sweep-Tiefe in ATR-Vielfachen
+   double            m_roundStep;        // Schrittweite runder Zahlen (z.B. 50.0 fuer XAUUSD)
+   double            m_roundTolerance;   // Max. Abstand Level <-> naechste runde Zahl (ATR-Vielfaches)
    int               m_reclaimBars;      // Max. M15-Bars bis Reclaim
    int               m_levelLookback;    // D1-Bars rueckwaerts als aktive Levels
    int               m_cooldownBars;     // D1-Bars Pause nach Abschluss
@@ -40,8 +46,23 @@ private:
    int               m_cooldownCounter;  // verbleibende M15-Bars Cooldown
 
    //+------------------------------------------------------------------+
+   //| Prueft ob ein Preis-Level nahe einer runden Zahl liegt.        |
+   //| "Nahe" = Abstand <= m_roundTolerance * ATR(M15).               |
+   //| Deaktiviert wenn m_roundStep <= 0.                              |
+   //+------------------------------------------------------------------+
+   bool              IsNearRoundNumber(const double level, const double atr) const
+     {
+      if(m_roundStep <= 0.0) return true; // Filter deaktiviert
+
+      double nearest = MathRound(level / m_roundStep) * m_roundStep;
+      double dist    = MathAbs(level - nearest);
+      return (dist <= m_roundTolerance * atr);
+     }
+
+   //+------------------------------------------------------------------+
    //| Sucht das naechstgelegene D1-Level das von M15[1] mit            |
-   //| ausreichender Tiefe (>= minSweepAtr * ATR) gesweept wurde.      |
+   //| ausreichender Tiefe (>= minSweepAtr * ATR) gesweept wurde       |
+   //| UND nahe einer runden Zahl liegt.                               |
    //| "Naechstgelegen" = geringster Abstand Level <-> SweepExtrem.    |
    //+------------------------------------------------------------------+
    bool              FindSweepedLevel(CMarketData &md, const ENUM_SIGNAL_DIR dir,
@@ -53,7 +74,7 @@ private:
       if(!md.GetHigh(PERIOD_M15, 1, high1)) return false;
 
       double atr      = md.GetAtrM15();
-      double minDepth = m_minSweepAtrMult * atr; // Mindesttiefe des Sweeps
+      double minDepth = m_minSweepAtrMult * atr;
 
       double bestDist = DBL_MAX;
       bool   found    = false;
@@ -67,8 +88,8 @@ private:
 
          if(dir == SIGNAL_LONG)
            {
-            double depth = dLow - low1; // positiv wenn low1 < dLow
-            if(depth >= minDepth)
+            double depth = dLow - low1;
+            if(depth >= minDepth && IsNearRoundNumber(dLow, atr))
               {
                if(depth < bestDist)
                  {
@@ -82,8 +103,8 @@ private:
            }
          else
            {
-            double depth = high1 - dHigh; // positiv wenn high1 > dHigh
-            if(depth >= minDepth)
+            double depth = high1 - dHigh;
+            if(depth >= minDepth && IsNearRoundNumber(dHigh, atr))
               {
                if(depth < bestDist)
                  {
@@ -162,6 +183,8 @@ public:
                         m_allowShort(false),
                         m_atrStopMult(1.5),
                         m_minSweepAtrMult(0.5),
+                        m_roundStep(50.0),
+                        m_roundTolerance(1.0),
                         m_reclaimBars(3),
                         m_levelLookback(3),
                         m_cooldownBars(2),
@@ -170,13 +193,16 @@ public:
                         m_cooldownCounter(0) {}
 
    void              Configure(const bool allowShort, const double atrStopMult,
-                               const double minSweepAtrMult, const int reclaimBars,
+                               const double minSweepAtrMult, const double roundStep,
+                               const double roundTolerance, const int reclaimBars,
                                const int levelLookback, const int cooldownBars,
                                const int magic)
      {
       m_allowShort      = allowShort;
       m_atrStopMult     = atrStopMult;
       m_minSweepAtrMult = minSweepAtrMult;
+      m_roundStep       = roundStep;
+      m_roundTolerance  = roundTolerance;
       m_reclaimBars     = reclaimBars;
       m_levelLookback   = levelLookback;
       m_cooldownBars    = cooldownBars;

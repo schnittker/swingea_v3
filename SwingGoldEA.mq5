@@ -72,6 +72,8 @@ input group "=== Strategie LiquiditySweep ==="
 input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
 input double InpSwAtrStopMult     = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
 input double InpSwMinSweepAtrMult = 0.5;  // Mindest-Sweep-Tiefe (ATR-M15-Vielfaches)
+input double InpSwRoundStep       = 50.0; // Schrittweite runde Zahlen (50=alle $50, 0=deaktiviert)
+input double InpSwRoundTolerance  = 1.0;  // Max. Abstand Level <-> runde Zahl (ATR-M15-Vielfaches)
 input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
 input int    InpSwLevelLookback   = 3;    // D1-Bars rueckwaerts als aktive Levels
 input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
@@ -401,6 +403,7 @@ int OnInit(void)
 
    CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
    sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwMinSweepAtrMult,
+                   InpSwRoundStep, InpSwRoundTolerance,
                    InpSwReclaimBars, InpSwLevelLookback, InpSwCooldownBars, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
