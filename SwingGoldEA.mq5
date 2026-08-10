@@ -38,6 +38,7 @@
 #include "Include/TradeExecution.mqh"
 #include "Include/TradeManager.mqh"
 #include "Include/DecisionLog.mqh"
+#include "Include/Notifications.mqh"
 
 //====================== HARDCODED PARAMETER (optimiert 2020-2026) =
 // DipBuy
@@ -110,6 +111,7 @@ input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
 input group "=== Infrastruktur ==="
 input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3
 input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
+input bool   InpEnableEmailNotify  = false;  // E-Mail bei Trade-Open/-Close (Terminal: Tools->Options->Email + "Allow Email" im EA)
 
 //====================== SLOT-KLASSE ===============================
 //
@@ -125,13 +127,14 @@ public:
    int                magic;
    double             riskPct;
    double             trailAtrMult;
+   ulong              lastTicket;    // letztes bekanntes Positions-Ticket (fuer History-Lookup nach externem Close)
    CSignalModuleBase *module;     // heap-alloziert, Release() pflicht
    CPositionTracker   tracker;
    CTradeExecution    exec;
    CTradeManager      manager;
 
                      CStrategySlot(void): enabled(false), magic(0), riskPct(1.0),
-                        trailAtrMult(2.5), module(NULL) {}
+                        trailAtrMult(2.5), lastTicket(0), module(NULL) {}
 
    //--- Gibt den heap-allozierten Modul-Zeiger frei. Fuer ALLE Slots
    //--- in OnDeinit aufrufen (auch bei disabled, ea.md H2).
@@ -155,6 +158,7 @@ CRiskManager     g_riskManager;
 CClusterRiskGuard g_clusterRiskGuard;
 CDrawdownGuard   g_drawdownGuard;
 CDecisionLog     g_decisionLog;
+CNotifications   g_notifications;
 
 //+------------------------------------------------------------------+
 //| Prueft, ob eine eigene Position mit gegebener Magic existiert.   |
@@ -300,9 +304,44 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
                        sent ? "" : "TradeExecution fehlgeschlagen");
 
    if(sent)
+     {
       slot.module.NotifyFilled();
+      g_notifications.TradeOpened(slot.module.Name(), _Symbol, proposal.dir, lots, refPrice, stopPrice, proposal.targetPrice);
+     }
    else
       slot.module.NotifyOrderFailed();
+  }
+
+//+------------------------------------------------------------------+
+//| Ermittelt Netto-Profit und Einstiegs-Volumen einer bereits       |
+//| geschlossenen Position ueber die History (slot.lastTicket) und  |
+//| verschickt die Close-Mail. MUSS vor module.NotifyPositionClosed()|
+//| aufgerufen werden, da GetDir() danach auf SIGNAL_FLAT zurueckfaellt.|
+//+------------------------------------------------------------------+
+void NotifyTradeClosed(CStrategySlot &slot)
+  {
+   double profit = 0.0;
+   double volume = 0.0;
+
+   if(slot.lastTicket != 0 && HistorySelectByPosition(slot.lastTicket))
+     {
+      int deals = HistoryDealsTotal();
+      for(int d = 0; d < deals; d++)
+        {
+         ulong dealTicket = HistoryDealGetTicket(d);
+         if(dealTicket == 0)
+            continue;
+
+         profit += HistoryDealGetDouble(dealTicket, DEAL_PROFIT)
+                 + HistoryDealGetDouble(dealTicket, DEAL_SWAP)
+                 + HistoryDealGetDouble(dealTicket, DEAL_COMMISSION);
+
+         if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY) == DEAL_ENTRY_IN)
+            volume = HistoryDealGetDouble(dealTicket, DEAL_VOLUME);
+        }
+     }
+
+   g_notifications.TradeClosed(slot.module.Name(), _Symbol, slot.module.GetDir(), volume, profit);
   }
 
 //+------------------------------------------------------------------+
@@ -439,6 +478,8 @@ int OnInit(void)
                           g_symbolResolver.Digits()))
       Print("SwingGoldEA: DecisionLog konnte nicht initialisiert werden - Telemetrie deaktiviert.");
 
+   g_notifications.Configure(InpEnableEmailNotify);
+
    //--- 7. Restart-Resilienz: offene eigene Positionen resynchronisieren
    for(int i = 0; i < 3; i++)
      {
@@ -561,6 +602,8 @@ void OnTick(void)
                PrintFormat("SwingGoldEA: Positionsrichtung fuer Slot %d unlesbar - Sync uebersprungen.", s);
            }
 
+         g_slots[s].lastTicket = ticket; // fuer History-Lookup nach externem Close merken
+
          //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing
          g_slots[s].manager.Manage(ticket, g_slots[s].module.GetDir(), g_slots[s].module.GetTargetPrice(),
                                    g_marketData, g_slots[s].tracker, g_slots[s].exec);
@@ -568,9 +611,12 @@ void OnTick(void)
          continue; // kein neuer Entry solange Position offen
         }
 
-      //--- Position gerade extern geschlossen?
+      //--- Position gerade extern geschlossen (SL/TP-Hit oder manuell)?
       if(g_slots[s].module.GetState() == ST_IN_POSITION)
+        {
+         NotifyTradeClosed(g_slots[s]);
          g_slots[s].module.NotifyPositionClosed();
+        }
 
       //--- Neuer Entry nur wenn Modul enabled UND neue Bar auf dem Trigger-TF
       if(!g_slots[s].enabled)
