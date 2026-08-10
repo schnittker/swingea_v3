@@ -18,6 +18,8 @@
 #ifndef __SWINGGOLD_CLUSTERRISKGUARD_MQH__
 #define __SWINGGOLD_CLUSTERRISKGUARD_MQH__
 
+#include "SymbolResolver.mqh"
+
 class CClusterRiskGuard
   {
 private:
@@ -45,9 +47,8 @@ private:
       if(stopDist <= 0.0 || volume <= 0.0)
          return 0.0;
 
-      double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tickSize  = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
-      if(tickSize <= 0.0 || tickValue <= 0.0)
+      double tickValue, tickSize;
+      if(!GetValidatedTickValue(symbol, tickValue, tickSize))
          return 0.0;
 
       return (tickValue / tickSize) * stopDist * volume;

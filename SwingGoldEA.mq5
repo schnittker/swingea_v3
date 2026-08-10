@@ -268,9 +268,8 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
       double newRiskMoney = 0.0;
       if(equity > 0.0 && stopPrice != 0.0 && refPrice != 0.0)
         {
-         double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-         double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-         if(tickSize > 0.0)
+         double tickValue, tickSize;
+         if(GetValidatedTickValue(_Symbol, tickValue, tickSize))
             newRiskMoney = (tickValue / tickSize) * MathAbs(refPrice - stopPrice) * lots;
         }
 

@@ -16,6 +16,7 @@
 #define __SWINGGOLD_RISKMANAGER_MQH__
 
 #include "Types.mqh"
+#include "SymbolResolver.mqh"
 
 class CRiskManager
   {
@@ -94,11 +95,10 @@ public:
          return 0.0;
         }
 
-      double tickValue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tickSize  = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
-      if(tickSize <= 0.0)
+      double tickValue, tickSize;
+      if(!GetValidatedTickValue(m_symbol, tickValue, tickSize))
         {
-         Print("RiskManager: TickSize <= 0 - kein Trade.");
+         Print("RiskManager: TickValue/TickSize nicht ermittelbar - kein Trade.");
          return 0.0;
         }
 
