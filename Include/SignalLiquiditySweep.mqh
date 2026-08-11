@@ -16,7 +16,7 @@
 //|   Stop:     SweepExtrem +/- atrStopMult * ATR(M15)              |
 //|   Ziel:     gegenuberliegende Seite desselben Levels.           |
 //|   Cooldown: m_cooldownBars * 96 M15-Bars nach jedem Abschluss.  |
-//|   SessionRestricted: false.                                      |
+//|   SessionRestricted: konfigurierbar, Default false.             |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
 #define __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
@@ -34,6 +34,8 @@ private:
    bool              m_useYearly;        // Yearly High/Low (13 MN1-Bars) als Levels verwenden
    int               m_reclaimBars;      // Max. M15-Bars bis Reclaim
    int               m_cooldownBars;     // D1-Bars Pause nach Abschluss (in 96 M15-Bars je Bar)
+   bool              m_sessionRestricted; // Nur im Overlap-Fenster (12-16 GMT) handeln
+   bool              m_useTrendFilter;    // Nur mit D1-Trend (Close vs. EMA-Slow-D1) handeln
 
    //--- gemerkte Werte des aktiven Setups
    double            m_hitLevel;         // Level das getroffen wurde
@@ -181,6 +183,21 @@ private:
       return found;
      }
 
+   //+------------------------------------------------------------------+
+   //| D1-Trendfilter: "Trends nicht faden" - Long nur ueber, Short   |
+   //| nur unter EMA-Slow-D1 (analog SignalDipBuy::CheckBias, ohne     |
+   //| Struktur-Bedingung).                                            |
+   //+------------------------------------------------------------------+
+   bool              CheckTrendBias(CMarketData &md, const ENUM_SIGNAL_DIR dir)
+     {
+      double close1;
+      if(!md.GetCloseD1(1, close1))
+         return false;
+
+      double emaSlow = md.GetEmaSlowD1();
+      return (dir == SIGNAL_LONG) ? (close1 > emaSlow) : (close1 < emaSlow);
+     }
+
    bool              CheckReclaim(CMarketData &md)
      {
       double open1, close1;
@@ -250,6 +267,8 @@ public:
                         m_useYearly(true),
                         m_reclaimBars(3),
                         m_cooldownBars(2),
+                        m_sessionRestricted(false),
+                        m_useTrendFilter(false),
                         m_hitLevel(0.0), m_targetLevel(0.0),
                         m_sweepExtreme(0.0), m_levelType(""),
                         m_reclaimCounter(0), m_cooldownCounter(0) {}
@@ -258,23 +277,26 @@ public:
                                const double minSweepAtrMult,
                                const bool useWeekly, const bool useMonthly, const bool useYearly,
                                const int reclaimBars, const int cooldownBars,
+                               const bool sessionRestricted, const bool useTrendFilter,
                                const int magic)
      {
-      m_allowShort      = allowShort;
-      m_atrStopMult     = atrStopMult;
-      m_minSweepAtrMult = minSweepAtrMult;
-      m_useWeekly       = useWeekly;
-      m_useMonthly      = useMonthly;
-      m_useYearly       = useYearly;
-      m_reclaimBars     = reclaimBars;
-      m_cooldownBars    = cooldownBars;
-      m_magic           = magic;
+      m_allowShort         = allowShort;
+      m_atrStopMult        = atrStopMult;
+      m_minSweepAtrMult    = minSweepAtrMult;
+      m_useWeekly          = useWeekly;
+      m_useMonthly         = useMonthly;
+      m_useYearly          = useYearly;
+      m_reclaimBars        = reclaimBars;
+      m_cooldownBars       = cooldownBars;
+      m_sessionRestricted  = sessionRestricted;
+      m_useTrendFilter     = useTrendFilter;
+      m_magic              = magic;
      }
 
    virtual string           Name(void)              const { return "SignalLiquiditySweep"; }
    virtual ENUM_TIMEFRAMES  TriggerTimeframe(void)  const { return PERIOD_M15;             }
    virtual ENUM_TIMEFRAMES  AtrTimeframe(void)      const { return PERIOD_M15;             }
-   virtual bool             SessionRestricted(void) const { return false;                  }
+   virtual bool             SessionRestricted(void) const { return m_sessionRestricted;    }
 
    virtual bool OnBar(CMarketData &md, SignalProposal &outProposal)
      {
@@ -282,6 +304,12 @@ public:
 
       if(m_state == ST_ARMED)
         {
+         if(m_useTrendFilter && !CheckTrendBias(md, m_dir))
+           {
+            ResetToIdle("Trendfilter: Bias verloren");
+            return false;
+           }
+
          m_reclaimCounter++;
 
          if(m_reclaimCounter > m_reclaimBars)
@@ -317,7 +345,8 @@ public:
          double sweepExtreme = 0.0, hitLevel = 0.0, targetLevel = 0.0;
          string levelType = "";
 
-         if(FindSweepedLevel(md, SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType))
+         if((!m_useTrendFilter || CheckTrendBias(md, SIGNAL_LONG)) &&
+            FindSweepedLevel(md, SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType))
            {
             ArmSweep(SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType);
             if(CheckReclaim(md))
@@ -330,6 +359,7 @@ public:
            }
 
          if(m_allowShort &&
+            (!m_useTrendFilter || CheckTrendBias(md, SIGNAL_SHORT)) &&
             FindSweepedLevel(md, SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType))
            {
             ArmSweep(SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType);

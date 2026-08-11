@@ -78,6 +78,8 @@ input bool   InpSwUseMonthly      = true;  // MN1 High/Low als Levels
 input bool   InpSwUseYearly       = true;  // Jahreshoch/-tief (13 MN1-Bars) als Levels
 input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
 input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
+input bool   InpSwSessionRestricted = false; // Sweep nur im Overlap-Fenster (12-16 GMT), nutzt InpUseSessionFilter/InpUseWeekdayFilter
+input bool   InpSwUseTrendFilter    = false; // Sweep nur mit D1-Trend (Close vs EMA-Slow-D1), 'Trends nicht faden'
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = false;  // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -444,7 +446,8 @@ int OnInit(void)
    CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
    sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwMinSweepAtrMult,
                    InpSwUseWeekly, InpSwUseMonthly, InpSwUseYearly,
-                   InpSwReclaimBars, InpSwCooldownBars, magicSweep);
+                   InpSwReclaimBars, InpSwCooldownBars,
+                   InpSwSessionRestricted, InpSwUseTrendFilter, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
