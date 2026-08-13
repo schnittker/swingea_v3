@@ -105,16 +105,26 @@ public:
          if(targetHit)
            {
             double partialVolume = NormalizePartialVolume(volume);
-            if(partialVolume > 0.0 && exec.ClosePartial(ticket, partialVolume))
+            if(partialVolume <= 0.0)
+              {
+               // Nicht sinnvoll normierbar (z.B. Restvolumen zu klein) - nicht jeden Bar neu versuchen.
+               tracker.SetPartialDone(ticket, true);
+               partialDone = true;
+              }
+            else if(exec.ClosePartial(ticket, partialVolume))
               {
                tracker.SetPartialDone(ticket, true);
                partialDone = true;
               }
             else
               {
-               // Nicht sinnvoll normierbar (z.B. Restvolumen zu klein) - nicht jeden Bar neu versuchen.
-               tracker.SetPartialDone(ticket, true);
-               partialDone = true;
+               // ClosePartial fehlgeschlagen (z.B. transienter Broker-Fehler) - Position NICHT
+               // ungeschuetzt mit vollem Risiko weiterlaufen lassen. Fallback: sofortiger
+               // Vollschluss zum Sichern des bereits erreichten Gewinns (Zielpreis wurde getroffen).
+               PrintFormat("TradeManager: ClosePartial fehlgeschlagen fuer Ticket=%I64u - Fallback Vollschluss.",
+                           ticket);
+               exec.ClosePosition(ticket);
+               return; // Position ggf. weg - kein weiteres SL-Handling in diesem Tick noetig.
               }
            }
         }

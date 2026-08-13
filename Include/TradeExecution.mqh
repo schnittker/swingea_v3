@@ -111,8 +111,8 @@ public:
          uint retcode   = m_trade.ResultRetcode();
          bool retryable = (retcode == TRADE_RETCODE_REQUOTE || retcode == TRADE_RETCODE_PRICE_CHANGED);
 
-         PrintFormat("TradeExecution: SendMarket Versuch %d/%d fehlgeschlagen, retcode=%u%s",
-                     attempt + 1, m_maxRetries + 1, retcode, retryable ? " - retry" : " - Abbruch");
+         PrintFormat("TradeExecution: SendMarket Versuch %d/%d fehlgeschlagen, retcode=%u, lastError=%d%s",
+                     attempt + 1, m_maxRetries + 1, retcode, GetLastError(), retryable ? " - retry" : " - Abbruch");
 
          if(!retryable)
             break;
@@ -129,8 +129,8 @@ public:
 
       bool ok = m_trade.PositionModify(ticket, sl, tp);
       if(!ok)
-         PrintFormat("TradeExecution: ModifyPosition Ticket=%I64u fehlgeschlagen, retcode=%u",
-                     ticket, m_trade.ResultRetcode());
+         PrintFormat("TradeExecution: ModifyPosition Ticket=%I64u fehlgeschlagen, retcode=%u, lastError=%d",
+                     ticket, m_trade.ResultRetcode(), GetLastError());
       return ok;
      }
 
@@ -143,8 +143,22 @@ public:
       m_trade.SetTypeFilling(DetectFillingMode());
       bool ok = m_trade.PositionClosePartial(ticket, volume);
       if(!ok)
-         PrintFormat("TradeExecution: ClosePartial Ticket=%I64u Volume=%.2f fehlgeschlagen, retcode=%u",
-                     ticket, volume, m_trade.ResultRetcode());
+         PrintFormat("TradeExecution: ClosePartial Ticket=%I64u Volume=%.2f fehlgeschlagen, retcode=%u, lastError=%d",
+                     ticket, volume, m_trade.ResultRetcode(), GetLastError());
+      return ok;
+     }
+
+   //--- Vollschluss einer Position (Fallback, wenn ClosePartial fehlschlaegt).
+   bool              ClosePosition(const ulong ticket)
+     {
+      if(!PositionSelectByTicket(ticket))
+         return false;
+
+      m_trade.SetTypeFilling(DetectFillingMode());
+      bool ok = m_trade.PositionClose(ticket);
+      if(!ok)
+         PrintFormat("TradeExecution: ClosePosition Ticket=%I64u fehlgeschlagen, retcode=%u, lastError=%d",
+                     ticket, m_trade.ResultRetcode(), GetLastError());
       return ok;
      }
   };
