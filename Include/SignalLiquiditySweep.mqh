@@ -17,6 +17,9 @@
 //|   Ziel:     gegenuberliegende Seite desselben Levels.           |
 //|   Cooldown: m_cooldownBars * 96 M15-Bars nach jedem Abschluss.  |
 //|   SessionRestricted: konfigurierbar, Default false.             |
+//|   RoundNumber-Filter: Level wird nur akzeptiert, wenn Abstand    |
+//|   zur naechsten roundStep-Zahl <= roundTolerance*ATR(M15) ist.  |
+//|   roundStep<=0 deaktiviert den Filter (Default, Hazard H14).   |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
 #define __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
@@ -36,6 +39,8 @@ private:
    int               m_cooldownBars;     // D1-Bars Pause nach Abschluss (in 96 M15-Bars je Bar)
    bool              m_sessionRestricted; // Nur im Overlap-Fenster (12-16 GMT) handeln
    bool              m_useTrendFilter;    // Nur mit D1-Trend (Close vs. EMA-Slow-D1) handeln
+   double            m_roundStep;         // Runde-Zahl-Schrittweite, <=0 = Filter aus
+   double            m_roundTolerance;    // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
 
    //--- gemerkte Werte des aktiven Setups
    double            m_hitLevel;         // Level das getroffen wurde
@@ -86,6 +91,19 @@ private:
       outHigh = hBuf[hiIdx];
       outLow  = lBuf[loIdx];
       return (outHigh > 0.0 && outLow > 0.0 && outHigh > outLow);
+     }
+
+   //+------------------------------------------------------------------+
+   //| Prueft ob ein Level nahe einer runden Zahl liegt (Fakeouts an   |
+   //| offensichtlichen Leveln/runden Zahlen, strategies.md Teil D).  |
+   //| roundStep<=0 deaktiviert den Filter (immer true).               |
+   //+------------------------------------------------------------------+
+   bool              IsNearRoundNumber(const double level, const double atr) const
+     {
+      if(m_roundStep <= 0.0) return true; // Filter deaktiviert
+      double nearest = MathRound(level / m_roundStep) * m_roundStep;
+      double dist    = MathAbs(level - nearest);
+      return (dist <= m_roundTolerance * atr);
      }
 
    //+------------------------------------------------------------------+
@@ -147,7 +165,7 @@ private:
             //--- Nur Low-Levels koennen von unten gesweept werden
             if(StringFind(lbl, "-Low") < 0) continue;
             double depth = lvl - low1;
-            if(depth >= minDepth)
+            if(depth >= minDepth && IsNearRoundNumber(lvl, atr))
               {
                if(depth < bestDist)
                  {
@@ -165,7 +183,7 @@ private:
             //--- Nur High-Levels koennen von oben gesweept werden
             if(StringFind(lbl, "-High") < 0) continue;
             double depth = high1 - lvl;
-            if(depth >= minDepth)
+            if(depth >= minDepth && IsNearRoundNumber(lvl, atr))
               {
                if(depth < bestDist)
                  {
@@ -269,6 +287,8 @@ public:
                         m_cooldownBars(2),
                         m_sessionRestricted(false),
                         m_useTrendFilter(false),
+                        m_roundStep(0.0),
+                        m_roundTolerance(1.0),
                         m_hitLevel(0.0), m_targetLevel(0.0),
                         m_sweepExtreme(0.0), m_levelType(""),
                         m_reclaimCounter(0), m_cooldownCounter(0) {}
@@ -278,6 +298,7 @@ public:
                                const bool useWeekly, const bool useMonthly, const bool useYearly,
                                const int reclaimBars, const int cooldownBars,
                                const bool sessionRestricted, const bool useTrendFilter,
+                               const double roundStep, const double roundTolerance,
                                const int magic)
      {
       m_allowShort         = allowShort;
@@ -290,6 +311,8 @@ public:
       m_cooldownBars       = cooldownBars;
       m_sessionRestricted  = sessionRestricted;
       m_useTrendFilter     = useTrendFilter;
+      m_roundStep          = roundStep;
+      m_roundTolerance     = roundTolerance;
       m_magic              = magic;
      }
 

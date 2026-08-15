@@ -80,6 +80,8 @@ input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Swe
 input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
 input bool   InpSwSessionRestricted = false; // Sweep nur im Overlap-Fenster (12-16 GMT), nutzt InpUseSessionFilter/InpUseWeekdayFilter
 input bool   InpSwUseTrendFilter    = false; // Sweep nur mit D1-Trend (Close vs EMA-Slow-D1), 'Trends nicht faden'
+input double InpSwRoundStep      = 0.0; // Runde-Zahl-Schrittweite (z.B. 50.0), 0=Filter aus
+input double InpSwRoundTolerance = 1.0; // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = false;  // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -447,7 +449,8 @@ int OnInit(void)
    sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwMinSweepAtrMult,
                    InpSwUseWeekly, InpSwUseMonthly, InpSwUseYearly,
                    InpSwReclaimBars, InpSwCooldownBars,
-                   InpSwSessionRestricted, InpSwUseTrendFilter, magicSweep);
+                   InpSwSessionRestricted, InpSwUseTrendFilter,
+                   InpSwRoundStep, InpSwRoundTolerance, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
