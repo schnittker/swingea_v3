@@ -20,6 +20,12 @@
 //|   RoundNumber-Filter: Level wird nur akzeptiert, wenn Abstand    |
 //|   zur naechsten roundStep-Zahl <= roundTolerance*ATR(M15) ist.  |
 //|   roundStep<=0 deaktiviert den Filter (Default, Hazard H14).   |
+//|   G/S-Ratio-Bestaetigungsfilter (ea.md 4.7, knowledge.md 1.4): |
+//|   Long nur wenn G/S-Ratio nicht steigend ODER Silber-Momentum  |
+//|   positiv; Short symmetrisch. Nur bei Signal-Einstieg (ST_IDLE)|
+//|   geprueft, nicht laufend wie der Trendfilter. Fail-open, wenn  |
+//|   das Silber-Symbol nicht selektierbar ist oder keine volle    |
+//|   History liefert (Default aus, Hazard H14).                   |
 //+------------------------------------------------------------------+
 #ifndef __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
 #define __SWINGGOLD_SIGNALLIQUIDITYSWEEP_MQH__
@@ -41,6 +47,9 @@ private:
    bool              m_useTrendFilter;    // Nur mit D1-Trend (Close vs. EMA-Slow-D1) handeln
    double            m_roundStep;         // Runde-Zahl-Schrittweite, <=0 = Filter aus
    double            m_roundTolerance;    // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
+   bool              m_useGsFilter;       // G/S-Ratio-Bestaetigungsfilter, Default false (Hazard H14)
+   string            m_gsSymbol;          // Silber-Symbol, Default "XAGUSD" (Broker-Suffix anpassbar)
+   int               m_gsLookback;        // D1-Bars fuer Ratio-/Silber-Momentum-Slope, Default 20
 
    //--- gemerkte Werte des aktiven Setups
    double            m_hitLevel;         // Level das getroffen wurde
@@ -216,6 +225,42 @@ private:
       return (dir == SIGNAL_LONG) ? (close1 > emaSlow) : (close1 < emaSlow);
      }
 
+   //+------------------------------------------------------------------+
+   //| G/S-Ratio-Bestaetigungsfilter (ea.md 4.7, knowledge.md 1.4).    |
+   //| Long:  nur wenn Ratio nicht steigend ODER Silber-Momentum positiv|
+   //| Short: nur wenn Ratio nicht fallend ODER Silber-Momentum negativ|
+   //| Fail-open bei fehlendem Silber-Symbol/History (kein Blockieren).|
+   //+------------------------------------------------------------------+
+   bool              CheckGsRatioBias(CMarketData &md, const ENUM_SIGNAL_DIR dir)
+     {
+      if(!m_useGsFilter) return true;
+      if(m_gsLookback < 1) return true;
+
+      double xauNow, xauPast;
+      if(!md.GetCloseD1(1, xauNow)) return true;                 // fail-open
+      if(!md.GetCloseD1(1 + m_gsLookback, xauPast)) return true; // fail-open
+
+      double bufXag[];
+      ArraySetAsSeries(bufXag, true);
+      if(CopyClose(m_gsSymbol, PERIOD_D1, 1, m_gsLookback + 1, bufXag) != m_gsLookback + 1)
+         return true; // Silber-Symbol nicht verfuegbar -> Filter faellt aus (ea.md 4.2)
+
+      double xagNow  = bufXag[0];
+      double xagPast = bufXag[m_gsLookback];
+      if(xagNow <= 0.0 || xagPast <= 0.0) return true;
+
+      double ratioNow     = xauNow  / xagNow;
+      double ratioPast    = xauPast / xagPast;
+      bool   ratioRising  = (ratioNow > ratioPast);
+      bool   ratioFalling = (ratioNow < ratioPast);
+      bool   silverMomUp  = (xagNow > xagPast);
+
+      if(dir == SIGNAL_LONG)
+         return (!ratioRising || silverMomUp);
+
+      return (!ratioFalling || !silverMomUp); // SIGNAL_SHORT symmetrisch
+     }
+
    bool              CheckReclaim(CMarketData &md)
      {
       double open1, close1;
@@ -289,6 +334,9 @@ public:
                         m_useTrendFilter(false),
                         m_roundStep(0.0),
                         m_roundTolerance(1.0),
+                        m_useGsFilter(false),
+                        m_gsSymbol("XAGUSD"),
+                        m_gsLookback(20),
                         m_hitLevel(0.0), m_targetLevel(0.0),
                         m_sweepExtreme(0.0), m_levelType(""),
                         m_reclaimCounter(0), m_cooldownCounter(0) {}
@@ -299,6 +347,7 @@ public:
                                const int reclaimBars, const int cooldownBars,
                                const bool sessionRestricted, const bool useTrendFilter,
                                const double roundStep, const double roundTolerance,
+                               const bool useGsFilter, const string gsSymbol, const int gsLookback,
                                const int magic)
      {
       m_allowShort         = allowShort;
@@ -313,7 +362,14 @@ public:
       m_useTrendFilter     = useTrendFilter;
       m_roundStep          = roundStep;
       m_roundTolerance     = roundTolerance;
+      m_useGsFilter        = useGsFilter;
+      m_gsSymbol           = gsSymbol;
+      m_gsLookback         = gsLookback;
       m_magic              = magic;
+
+      if(m_useGsFilter && !SymbolSelect(m_gsSymbol, true))
+         PrintFormat("SignalLiquiditySweep: Symbol '%s' fuer G/S-Ratio-Filter nicht selektierbar - "
+                     "Filter faellt fail-open zurueck.", m_gsSymbol);
      }
 
    virtual string           Name(void)              const { return "SignalLiquiditySweep"; }
@@ -369,6 +425,7 @@ public:
          string levelType = "";
 
          if((!m_useTrendFilter || CheckTrendBias(md, SIGNAL_LONG)) &&
+            (!m_useGsFilter || CheckGsRatioBias(md, SIGNAL_LONG)) &&
             FindSweepedLevel(md, SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType))
            {
             ArmSweep(SIGNAL_LONG, sweepExtreme, hitLevel, targetLevel, levelType);
@@ -383,6 +440,7 @@ public:
 
          if(m_allowShort &&
             (!m_useTrendFilter || CheckTrendBias(md, SIGNAL_SHORT)) &&
+            (!m_useGsFilter || CheckGsRatioBias(md, SIGNAL_SHORT)) &&
             FindSweepedLevel(md, SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType))
            {
             ArmSweep(SIGNAL_SHORT, sweepExtreme, hitLevel, targetLevel, levelType);

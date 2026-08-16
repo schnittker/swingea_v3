@@ -82,6 +82,9 @@ input bool   InpSwSessionRestricted = false; // Sweep nur im Overlap-Fenster (12
 input bool   InpSwUseTrendFilter    = false; // Sweep nur mit D1-Trend (Close vs EMA-Slow-D1), 'Trends nicht faden'
 input double InpSwRoundStep      = 0.0; // Runde-Zahl-Schrittweite (z.B. 50.0), 0=Filter aus
 input double InpSwRoundTolerance = 1.0; // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
+input bool   InpSwUseGsFilter    = false; // G/S-Ratio-Bestaetigungsfilter (Silber), Default false (Hazard H14)
+input string InpSwGsSymbol       = "XAGUSD"; // Silber-Symbol, Broker-Suffix ggf. anpassen
+input int    InpSwGsLookback     = 20;    // D1-Bars fuer G/S-Ratio-/Silber-Momentum-Slope
 
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = false;  // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
@@ -450,7 +453,8 @@ int OnInit(void)
                    InpSwUseWeekly, InpSwUseMonthly, InpSwUseYearly,
                    InpSwReclaimBars, InpSwCooldownBars,
                    InpSwSessionRestricted, InpSwUseTrendFilter,
-                   InpSwRoundStep, InpSwRoundTolerance, magicSweep);
+                   InpSwRoundStep, InpSwRoundTolerance,
+                   InpSwUseGsFilter, InpSwGsSymbol, InpSwGsLookback, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
