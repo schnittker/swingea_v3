@@ -14,6 +14,7 @@
 #define MAGIC_OFFSET_DIPBUY   1
 #define MAGIC_OFFSET_OVERLAP  2   // Overlap-Trendfolge (Phase 3)
 #define MAGIC_OFFSET_SWEEP    3   // LiquiditySweep-Reclaim (Tier 2.1)
+#define MAGIC_OFFSET_LBMAFIX  4   // LBMA-Fix-Reversal (Tier 3, experimentell)
 
 //+------------------------------------------------------------------+
 //| Liefert die Magic-Nummer des DipBuy-Moduls fuer die gegebene     |
@@ -38,6 +39,14 @@ int MagicOverlapTrend(const int magicBase)
 int MagicLiquiditySweep(const int magicBase)
   {
    return magicBase + MAGIC_OFFSET_SWEEP;
+  }
+
+//+------------------------------------------------------------------+
+//| Liefert die Magic-Nummer des LbmaFixReversal-Moduls.            |
+//+------------------------------------------------------------------+
+int MagicLbmaFixReversal(const int magicBase)
+  {
+   return magicBase + MAGIC_OFFSET_LBMAFIX;
   }
 
 #endif // __SWINGGOLD_MAGICNUMBERS_MQH__
