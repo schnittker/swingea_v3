@@ -529,14 +529,14 @@ Der praktisch wichtigste Abschnitt. Jeder Punkt hat schon einmal ein Gold-System
 
 Der EA ist so gebaut, dass jede Hypothese ein A/B-Test über einen Schalter ist:
 
-| # | Hypothese | Schalter | Metrik |
-|---|---|---|---|
-| 1 | Session-Selektivität schlägt 24 h | `InpUseSessionFilter` | Expectancy/Trade, Profit-Faktor (Phase 3) |
-| 2 | Retest-Pflicht schlägt Sofort-Entry | `InpRequireRetest` | Trefferquote + Expectancy (Phase 3/4) |
-| 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis |
-| 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung |
-| 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy |
-| 6 | Optimaler ATR-Multiplikator | `InpAtrStopMult` 1,0/1,5/2,0/2,5 | **Parameter-Plateau**, nicht Peak |
+| # | Hypothese | Schalter | Metrik | Ergebnis |
+|---|---|---|---|---|
+| 1 | Session-Selektivität schlägt 24 h | `InpUseSessionFilter` | Expectancy/Trade, Profit-Faktor (Phase 3) | offen |
+| 2 | Retest-Pflicht schlägt Sofort-Entry | `InpRequireRetest` | Trefferquote + Expectancy (Phase 3/4) | offen |
+| 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis | **Verworfen** (2026-08-17, s. 8.4) |
+| 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung | **Verworfen** (2026-08-17, s. 8.4) |
+| 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy | offen |
+| 6 | Optimaler ATR-Multiplikator | `InpAtrStopMult` 1,0/1,5/2,0/2,5 | **Parameter-Plateau**, nicht Peak | offen |
 
 **Auswertung über `DecisionLog`**, nicht nur über den Tester-Report: nur dort steht, welcher Filter wie viele Trades abgelehnt hat und was diese Trades gebracht hätten.
 
@@ -558,7 +558,38 @@ Ein D1-Swing-System liefert über 15 Jahre grob **50–150 Trades**. Das ist fü
 - **Parameter maximal sparsam** (zwei [OPT]-Werte)
 - Ergebnisse als **Größenordnung**, nicht als Punktschätzung lesen
 
-### 8.4 Go-Live-Kette
+### 8.4 Testergebnisse (Stand 2026-08-17)
+
+Alle vier in der Testmatrix (8.1) vorgesehenen Eskalationsstufen für das `LiquiditySweep`-
+und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
+
+- **LiquiditySweep-Reclaim (Basis, W1/MN1/Yearly-Levels):** isolierter IS-Test 2020-2023 mit
+  validierten Basis-Settings (`InpSwSessionRestricted=true`, `InpSwUseTrendFilter=false`)
+  liefert PF 1.66 bei 73 Trades — bester bisheriger Stand, aber ohne OOS-Bestätigung noch
+  nicht live-validiert.
+- **Round-Number-Filter (Hypothese-adjazent, `m_roundStep`):** kein Edge. Jede Konfiguration
+  mit `RoundStep>0` reduziert die Trade-Zahl drastisch und drückt PF unter die Baseline;
+  einzige Ausnahme hatte nur 19 Trades (Overfitting-Verdacht, unter Mindestschwelle 50).
+  Default bleibt `InpSwRoundStep=0.0`.
+- **Hypothese 3 — G/S-Ratio-Filter (`m_useGsFilter`):** kein belastbarer Edge. Bester Wert
+  PF 1.14 bei nur 16 Trades (Baseline ohne Filter: PF 1.66 bei 73 Trades) — Filter reduziert
+  die Trade-Zahl um 68-78 %, Stichprobe bleibt unter der Mindestschwelle 50. Ergebnis
+  unentschieden mangels Daten, nicht widerlegt. Default bleibt `InpSwUseGsFilter=false`.
+- **Hypothese 4 — LBMA-Fix-Reversal (eigenes Phase-4-Modul, Slot 3):** **klar verworfen.**
+  Zeitfenster-Erkennung (AM-Fix 10:30 / PM-Fix 15:00 London-Zeit) technisch verifiziert
+  (Journal-Timestamps stimmen exakt mit Broker-GMT-Offset). Isolierter IS-Test 2020-2023
+  über 96 Parameter-Kombinationen (`InpLbmaMinMoveAtrMult` × `InpLbmaReversalAtrMult`),
+  jeweils 412-772 Trades (Stichprobe ausreichend groß, anders als bei den Sweep-Filtern)
+  — **kein einziger Durchlauf erreicht PF ≥ 1.0** (bester Wert: PF 0.84 bei 620 Trades).
+  Kein OOS-Test nötig, da keine IS-Kandidaten die Mindestvoraussetzung (PF>1) erfüllen.
+  Default bleibt `InpUseLbmaFixModule=false`, Modul bleibt im Code für mögliche spätere
+  Re-Tests mit anderer Mechanik, wird aber nicht live eingesetzt.
+
+Damit ist Frage aus Abschnitt 10 ("Ist der LBMA-Fix-Effekt überhaupt messbar?") beantwortet:
+messbar ja (Zeitfenster technisch einwandfrei erkannt), aber **kein handelbarer Reversal-
+Edge** mit der hier konstruierten Entry/Stop/Target-Regel.
+
+### 8.5 Go-Live-Kette
 
 1. Modul-Einzeltests (TimeContext mit DST-Fällen, RiskManager-Lotberechnung gegen Handrechnung, ClusterRiskGuard mit Fremdpositionen)
 2. IS → OOS → Walk-Forward → Monte-Carlo
@@ -603,7 +634,7 @@ Ein D1-Swing-System liefert über 15 Jahre grob **50–150 Trades**. Das ist fü
 |---|---|
 | Welche Satelliten-Symbole bietet IC Markets tatsächlich (Copper? US500? VIX?) | Symbolliste im Terminal prüfen |
 | Wie weit reichen brauchbare XAUUSD-Tickdaten zurück? | History Center / Tester-Log |
-| Ist der LBMA-Fix-Effekt überhaupt messbar? | Phase 4, sonst verwerfen |
+| Ist der LBMA-Fix-Effekt überhaupt messbar? | **Beantwortet (2026-08-17, s. 8.4):** Zeitfenster ja, handelbarer Edge nein — verworfen |
 | Hat die in `knowledge.md` 2 notierte Verschiebung (Asien treibt Rebounds) Bestand? | Session-Attribution über `DecisionLog` |
 | Reicht der Swing-Ansatz allein, oder braucht es Phase 3 für Stichprobengröße? | Nach Phase 2 entscheiden |
 | Soll die Cluster-Grenze auch Goldminen-CFDs erfassen? | Abhängig vom übrigen Portfolio |
