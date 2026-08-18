@@ -536,7 +536,7 @@ Der EA ist so gebaut, dass jede Hypothese ein A/B-Test über einen Schalter ist:
 | 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis | **Verworfen** (2026-08-17, s. 8.4) |
 | 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung | **Verworfen** (2026-08-17, s. 8.4) |
 | 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy | offen |
-| 6 | Optimaler ATR-Multiplikator | `InpAtrStopMult` 1,0/1,5/2,0/2,5 | **Parameter-Plateau**, nicht Peak | offen |
+| 6 | Optimaler ATR-Multiplikator | `InpOverlapAtrStopMult` 1,5-3,5 | **Parameter-Plateau**, nicht Peak | **Bestätigt** (2026-08-18, s. 8.4) |
 
 **Auswertung über `DecisionLog`**, nicht nur über den Tester-Report: nur dort steht, welcher Filter wie viele Trades abgelehnt hat und was diese Trades gebracht hätten.
 
@@ -632,6 +632,44 @@ und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
 Damit ist Frage aus Abschnitt 10 ("Ist der LBMA-Fix-Effekt überhaupt messbar?") beantwortet:
 messbar ja (Zeitfenster technisch einwandfrei erkannt), aber **kein handelbarer Reversal-
 Edge** mit der hier konstruierten Entry/Stop/Target-Regel.
+
+**Hypothese 6 — ATR-Multiplikator-Plateau (`InpOverlapAtrStopMult`, Overlap-Modul, Slot 1):**
+**bestätigt**, reine Formanalyse (kein PF>1-Mindestkriterium wie bei Edge-Hypothesen, sondern
+Plateau vs. Peak). Der bisher hardcodierte Wert `OVERLAP_ATR_STOP_MULT=2.75` wurde in den Input
+`InpOverlapAtrStopMult` umgewandelt und isoliert optimiert (Overlap solo, alle anderen Module
+aus, `InpUseSessionFilter=true` fix), IS 2020-2023, Grid 1,5-3,5 in 0,25-Schritten:
+
+| ATR-Mult | Trades | PF | Exp. Payoff | DD% | Net Profit |
+|---|---|---|---|---|---|
+| 1,50 | 0 | – | – | – | 0,00 |
+| 1,75 | 152 | 1,14 | 0,75 | 4,70 | 114,66 |
+| 2,00 | 151 | 1,33 | 1,89 | 4,25 | 285,68 |
+| 2,25 | 136 | 1,21 | 1,14 | 4,74 | 155,61 |
+| 2,50 | 139 | 1,44 | 2,37 | 4,75 | 328,86 |
+| **2,75** | 139 | 1,38 | 1,85 | 4,51 | 257,66 |
+| 3,00 | 143 | 1,42 | 2,10 | 4,15 | 300,83 |
+| 3,25 | 140 | 1,44 | 2,19 | 4,18 | 306,19 |
+| 3,50 | 129 | 1,41 | 1,90 | 4,36 | 245,43 |
+
+Sieben benachbarte Werte (2,00-3,50) liefern durchgehend PF zwischen 1,21 und 1,44 bei
+129-151 Trades je Punkt (>> Mindestschwelle 50) — kein Wert in dieser Nachbarschaft bricht
+auf PF<1 oder negative Expectancy ein. Der Produktionswert 2,75 liegt komfortabel innerhalb
+dieses Plateaus (nicht am Rand), auch wenn er nicht das Maximum ist (2,50/3,25 liefern PF
+1,44). Erst unterhalb von 2,00 fällt die Kurve ab: bei 1,75 sinkt PF auf 1,14, bei 1,50
+kollabiert das Modul komplett (0 Trades — Stop-Abstand kollidiert dort vermutlich mit einer
+internen Mindestabstands-Validierung). Diese Kante liegt außerhalb der unmittelbaren
+Nachbarschaft von 2,75 und bestätigt die Plateau-Grenze, statt die Hypothese zu widerlegen.
+
+Zusatz-Check OOS 2024-2026 mit Produktionswert `InpOverlapAtrStopMult=2,75` (identische
+Modul-Isolation): 116 Trades, WR 54,31%, PF 1,34, Exp. Payoff 2,03, Max DD 2,80%/2,92%
+(Balance/Equity), Sharpe 4,05, Recovery Factor 2,58, Net Profit 235,92 — bestätigt, dass der
+bestehende Produktionswert auch außerhalb des IS-Fensters funktioniert (keine Änderung an der
+Deploy-Konfiguration nötig).
+
+**Konsequenz:** `OVERLAP_ATR_STOP_MULT` bleibt dauerhaft als `InpOverlapAtrStopMult`-Input
+(Default 2,75) im Code, kein Zurückbau zur Konstante — Input bleibt für künftige
+Re-Validierungen nützlich und entspricht dem etablierten Muster der anderen Module
+(`InpSwAtrStopMult`/`InpLbmaAtrStopMult`/`InpAsiaAtrStopMult`).
 
 ### 8.5 Go-Live-Kette
 
