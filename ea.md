@@ -532,7 +532,7 @@ Der EA ist so gebaut, dass jede Hypothese ein A/B-Test über einen Schalter ist:
 | # | Hypothese | Schalter | Metrik | Ergebnis |
 |---|---|---|---|---|
 | 1 | Session-Selektivität schlägt 24 h | `InpUseSessionFilter` | Expectancy/Trade, Profit-Faktor (Phase 3) | **Bestätigt** (2026-08-17, s. 8.4) |
-| 2 | Retest-Pflicht schlägt Sofort-Entry | `InpRequireRetest` | Trefferquote + Expectancy (Phase 3/4) | offen |
+| 2 | Retest-Pflicht schlägt Sofort-Entry | `InpAsiaRequireRetest` | Trefferquote + Expectancy (Phase 3/4) | **Bestätigt** (2026-08-18, s. 8.4) |
 | 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis | **Verworfen** (2026-08-17, s. 8.4) |
 | 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung | **Verworfen** (2026-08-17, s. 8.4) |
 | 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy | offen |
@@ -558,7 +558,7 @@ Ein D1-Swing-System liefert über 15 Jahre grob **50–150 Trades**. Das ist fü
 - **Parameter maximal sparsam** (zwei [OPT]-Werte)
 - Ergebnisse als **Größenordnung**, nicht als Punktschätzung lesen
 
-### 8.4 Testergebnisse (Stand 2026-08-17)
+### 8.4 Testergebnisse (Stand 2026-08-18)
 
 **Hypothese 1 — Session-Selektivität (`InpUseSessionFilter`, Overlap-Modul, Slot 1):**
 **bestätigt**, sowohl IS als auch OOS, mit ausreichender Stichprobe in beiden Fenstern.
@@ -580,6 +580,29 @@ deutlicher als beim reinen PF-Vergleich: Max DD halbiert (2.91% vs. 7.59%), Shar
 Net Profit trotz weniger als halb so vieler Trades. Erster Filter in der gesamten Testreihe
 mit robustem Edge in beiden Fenstern (anders als G/S-Ratio, Round-Number, LBMA-Fix).
 **Konsequenz:** Default von `InpUseSessionFilter` auf `true` geändert (SwingGoldEA.mq5).
+
+**Hypothese 2 — Retest-Pflicht schlägt Sofort-Entry (`InpAsiaRequireRetest`, neues Modul
+`SignalAsiaRangeBreakout`, Slot 4, strategies.md Teil C.4):** **bestätigt**, sowohl IS als
+auch OOS, mit deutlich ausreichender Stichprobe in beiden Fenstern. Isolierter A/B-Test
+(Asia solo, alle anderen Module aus, `InpAsiaAllowShort=true` fix), Optimierung über
+`InpAsiaRequireRetest` (false=Sofort-Entry / true=Retest-Pflicht):
+
+| Fenster | Variante | Trades | PF | Exp. Payoff | Max DD% | Sharpe | Net Profit |
+|---|---|---|---|---|---|---|---|
+| IS 2020-2023 | false (Sofort) | 1161 | 0.98 | -0.08 | 16.83% | – | -89.96 |
+| IS 2020-2023 | true (Retest) | 912 | 1.13 | 0.55 | 12.51% | – | 500.71 |
+| OOS 2024-2026 | true (Retest) | 328 | 1.29 | 1.26 | 10.60% | 1.62 | 413.38 |
+
+Sofort-Entry scheidet schon IS aus (PF<1 bei 1161 Trades, negativer Profit) — kein OOS-Test
+nötig (identische Begründung wie bei LBMA-Fix: Mindestvoraussetzung PF>1 nicht erfüllt).
+Retest-Pflicht erfüllt die IS-Mindestanforderung (PF 1.13, 912 Trades) und bestätigt sich OOS
+sogar staerker als IS (PF 1.29 statt 1.13, DD 10.60% statt 12.51%, 328 Trades >> Mindest-
+schwelle 30) — kein Overfitting-Muster wie bei den verworfenen Sweep-Eskalationsstufen.
+**Konsequenz:** `InpAsiaRequireRetest` Default bleibt `true` (bereits Standardwert bei
+Einführung des Moduls). Modul `InpUseAsiaModule` bleibt vorerst `false` (Hazard H14) — die
+in `strategies.md` Teil C.4 dokumentierte Einschränkung (Asien trieb H1/2026 die Rebounds,
+Box-Annahme nicht mehr uneingeschränkt gültig) ist mit diesem Backtest-Zeitraum nicht
+geprüft; vor Live-Aktivierung zusätzlich Cross-Check auf 2026er-Teilfenster empfehlenswert.
 
 Alle vier in der Testmatrix (8.1) vorgesehenen Eskalationsstufen für das `LiquiditySweep`-
 und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
