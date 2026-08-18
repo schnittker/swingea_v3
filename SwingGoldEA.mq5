@@ -10,9 +10,11 @@
 //|   PollNewBars() latcht die Bar-Flags einmal pro Tick, alle       |
 //|   Is*Bar()-Aufrufe sind danach nicht-mutierend (Bugfix).        |
 //|                                                                    |
-//|   Default: InpUseOverlapModule=false, InpUseSweepModule=false   |
-//|   (Hazard H14: bestehende .set-Dateien wuerden sonst still      |
-//|   zum Mehr-Modul-Lauf).                                         |
+//|   LiquiditySweep und LBMA-Fix-Reversal sind verworfene          |
+//|   Hypothesen (ea.md 8.1) - hardcodiert deaktiviert (Konstanten  |
+//|   statt Inputs, 2026-08-18), nicht mehr ueber Inputs steuerbar. |
+//|   Default Asia: InpUseAsiaModule=false (Hazard H14: bestehende  |
+//|   .set-Dateien wuerden sonst still zum Mehr-Modul-Lauf).        |
 //|                                                                    |
 //|   ACHTUNG: Vor Echtgeld zwingend Out-of-Sample + Walk-Forward + |
 //|   Forward-Test (ea.md Abschnitt 8, Go-Live-Kette).             |
@@ -62,54 +64,95 @@ const int    OVERLAP_ATR_PERIOD_M15    = 14;
 const int    OVERLAP_SWING_LOOKBACK    = 3;
 const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
 const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
-// LbmaFixReversal
-const double LBMAFIX_TRAIL_ATR_MULT    = 3.0;
+const double OVERLAP_ATR_STOP_MULT     = 2.75; // H-Test 6 bestaetigt (Plateau 2.0-3.5, ea.md 8.4)
 // AsiaRangeBreakout
 const double ASIA_TRAIL_ATR_MULT       = 3.0;
+const bool   ASIA_ALLOW_SHORT          = true;  // H-Test 2 Robustheits-Nachtest: Long+Short > Long-only (ea.md 8.4)
+
+//====================== VERWORFENE STRATEGIEN (ea.md 8.1) =========
+// LiquiditySweep (Slot 2): kein Edge in allen Eskalationsstufen (Basis, Round-Number-,
+// G/S-Ratio-Filter). LBMA-Fix-Reversal (Slot 3): PF<1 im gesamten 96-Passes-Grid.
+// Beide dauerhaft deaktiviert - Konstanten statt Inputs, Werte = letzter getesteter Stand.
+const bool   SWEEP_MODULE_ENABLED      = false;
+const bool   SWEEP_ALLOW_SHORT         = false;
+const double SWEEP_ATR_STOP_MULT       = 1.5;
+const double SWEEP_MIN_SWEEP_ATR_MULT  = 0.5;
+const bool   SWEEP_USE_WEEKLY          = true;
+const bool   SWEEP_USE_MONTHLY         = true;
+const bool   SWEEP_USE_YEARLY          = true;
+const int    SWEEP_RECLAIM_BARS        = 3;
+const int    SWEEP_COOLDOWN_BARS       = 2;
+const bool   SWEEP_SESSION_RESTRICTED  = false;
+const bool   SWEEP_USE_TREND_FILTER    = false;
+const double SWEEP_ROUND_STEP          = 0.0;
+const double SWEEP_ROUND_TOLERANCE     = 1.0;
+const bool   SWEEP_USE_GS_FILTER       = false;
+const string SWEEP_GS_SYMBOL           = "XAGUSD";
+const int    SWEEP_GS_LOOKBACK         = 20;
+const double SWEEP_RISK_PCT            = 1.0;
+
+const bool   LBMAFIX_MODULE_ENABLED    = false;
+const bool   LBMAFIX_ALLOW_SHORT       = false;
+const double LBMAFIX_ATR_STOP_MULT     = 1.0;
+const double LBMAFIX_MIN_MOVE_ATR_MULT = 0.5;
+const double LBMAFIX_REVERSAL_ATR_MULT = 0.3;
+const int    LBMAFIX_PRE_FIX_BARS      = 2;
+const int    LBMAFIX_CONFIRM_BARS      = 3;
+const int    LBMAFIX_FIX_AM_HOUR       = 10;
+const int    LBMAFIX_FIX_AM_MINUTE     = 30;
+const int    LBMAFIX_FIX_PM_HOUR       = 15;
+const int    LBMAFIX_FIX_PM_MINUTE     = 0;
+const double LBMAFIX_RISK_PCT          = 1.0;
+// LbmaFixReversal
+const double LBMAFIX_TRAIL_ATR_MULT    = 3.0;
 
 //====================== INPUTS ====================================
 
 input group "=== Module ==="
 input bool   InpUseDipBuyModule    = true;   // DipBuy-Strategie (D1/H4) aktiv
 input bool   InpUseOverlapModule   = true;   // Overlap-Strategie (H4-Bias/M15) aktiv
-input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
-input bool   InpUseLbmaFixModule   = false;  // LBMA-Fix-Reversal (M15) - Default false (Hazard H14)
+// InpUseSweepModule und InpUseLbmaFixModule entfernt (2026-08-18, ea.md 8.1): beide
+// Hypothesen verworfen, dauerhaft deaktiviert als SWEEP_MODULE_ENABLED/LBMAFIX_MODULE_ENABLED.
 input bool   InpUseAsiaModule      = false;  // Asia-Range-Breakout (M15) - Default false (Hazard H14)
 
-input group "=== Strategie Overlap ==="
-input double InpOverlapAtrStopMult = 2.75; // Stop-Abstand (ATR-M15-Multiplikator, H-Test 6 Plateau)
+// InpOverlapAtrStopMult entfernt (2026-08-18): H-Test 6 bestaetigt Plateau, Wert wieder
+// hardcodiert als OVERLAP_ATR_STOP_MULT (s.o.).
 
-input group "=== Strategie LiquiditySweep ==="
-input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
-input double InpSwAtrStopMult     = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
-input double InpSwMinSweepAtrMult = 0.5;  // Mindest-Sweep-Tiefe (ATR-M15-Vielfaches)
-input bool   InpSwUseWeekly       = true;  // W1 High/Low als Levels
-input bool   InpSwUseMonthly      = true;  // MN1 High/Low als Levels
-input bool   InpSwUseYearly       = true;  // Jahreshoch/-tief (13 MN1-Bars) als Levels
-input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
-input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
-input bool   InpSwSessionRestricted = false; // Sweep nur im Overlap-Fenster (12-16 GMT), nutzt InpUseSessionFilter/InpUseWeekdayFilter
-input bool   InpSwUseTrendFilter    = false; // Sweep nur mit D1-Trend (Close vs EMA-Slow-D1), 'Trends nicht faden'
-input double InpSwRoundStep      = 0.0; // Runde-Zahl-Schrittweite (z.B. 50.0), 0=Filter aus
-input double InpSwRoundTolerance = 1.0; // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
-input bool   InpSwUseGsFilter    = false; // G/S-Ratio-Bestaetigungsfilter (Silber), Default false (Hazard H14)
-input string InpSwGsSymbol       = "XAGUSD"; // Silber-Symbol, Broker-Suffix ggf. anpassen
-input int    InpSwGsLookback     = 20;    // D1-Bars fuer G/S-Ratio-/Silber-Momentum-Slope
+// === Strategie LiquiditySweep === entfernt (2026-08-18, ea.md 8.1: kein Edge, verworfen).
+// Alle Parameter jetzt hardcodiert als SWEEP_*-Konstanten (s.o.). Bei Bedarf zur
+// Re-Validierung: Inputs wieder einkommentieren und Configure()-Aufruf in OnInit anpassen.
+// input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
+// input double InpSwAtrStopMult     = 1.5;  // Stop-Abstand (ATR-M15-Multiplikator)
+// input double InpSwMinSweepAtrMult = 0.5;  // Mindest-Sweep-Tiefe (ATR-M15-Vielfaches)
+// input bool   InpSwUseWeekly       = true;  // W1 High/Low als Levels
+// input bool   InpSwUseMonthly      = true;  // MN1 High/Low als Levels
+// input bool   InpSwUseYearly       = true;  // Jahreshoch/-tief (13 MN1-Bars) als Levels
+// input int    InpSwReclaimBars     = 3;    // Max. M15-Bars fuer Reclaim nach Sweep
+// input int    InpSwCooldownBars    = 2;    // D1-Bars Pause nach jedem Trade/Veto
+// input bool   InpSwSessionRestricted = false; // Sweep nur im Overlap-Fenster (12-16 GMT)
+// input bool   InpSwUseTrendFilter    = false; // Sweep nur mit D1-Trend, 'Trends nicht faden'
+// input double InpSwRoundStep      = 0.0; // Runde-Zahl-Schrittweite (z.B. 50.0), 0=Filter aus
+// input double InpSwRoundTolerance = 1.0; // Max. Abstand Level<->runde Zahl (ATR-M15-Vielfaches)
+// input bool   InpSwUseGsFilter    = false; // G/S-Ratio-Bestaetigungsfilter (Silber)
+// input string InpSwGsSymbol       = "XAGUSD"; // Silber-Symbol, Broker-Suffix ggf. anpassen
+// input int    InpSwGsLookback     = 20;    // D1-Bars fuer G/S-Ratio-/Silber-Momentum-Slope
 
-input group "=== Strategie LBMA-Fix-Reversal ==="
-input bool   InpLbmaAllowShort     = false; // Short-Reversals erlaubt
-input double InpLbmaAtrStopMult    = 1.0;   // Stop-Abstand (ATR-M15-Multiplikator)
-input double InpLbmaMinMoveAtrMult = 0.5;   // Mindest-Pre-Fix-Lauf (ATR-M15-Vielfaches)
-input double InpLbmaReversalAtrMult= 0.3;   // Mindest-Reversal-Bestaetigung (ATR-M15-Vielfaches)
-input int    InpLbmaPreFixBars     = 2;     // M15-Bars vor dem Fix zur Lauf-Messung (30 Min)
-input int    InpLbmaConfirmBars    = 3;     // Max. M15-Bars fuer Reversal-Bestaetigung
-input int    InpLbmaFixAmHour      = 10;    // AM-Fix Stunde (London-Zeit)
-input int    InpLbmaFixAmMinute    = 30;    // AM-Fix Minute (London-Zeit)
-input int    InpLbmaFixPmHour      = 15;    // PM-Fix Stunde (London-Zeit)
-input int    InpLbmaFixPmMinute    = 0;     // PM-Fix Minute (London-Zeit)
+// === Strategie LBMA-Fix-Reversal === entfernt (2026-08-18, ea.md 8.1: PF<1 im gesamten
+// Grid, verworfen). Alle Parameter jetzt hardcodiert als LBMAFIX_*-Konstanten (s.o.).
+// input bool   InpLbmaAllowShort     = false; // Short-Reversals erlaubt
+// input double InpLbmaAtrStopMult    = 1.0;   // Stop-Abstand (ATR-M15-Multiplikator)
+// input double InpLbmaMinMoveAtrMult = 0.5;   // Mindest-Pre-Fix-Lauf (ATR-M15-Vielfaches)
+// input double InpLbmaReversalAtrMult= 0.3;   // Mindest-Reversal-Bestaetigung (ATR-M15-Vielfaches)
+// input int    InpLbmaPreFixBars     = 2;     // M15-Bars vor dem Fix zur Lauf-Messung (30 Min)
+// input int    InpLbmaConfirmBars    = 3;     // Max. M15-Bars fuer Reversal-Bestaetigung
+// input int    InpLbmaFixAmHour      = 10;    // AM-Fix Stunde (London-Zeit)
+// input int    InpLbmaFixAmMinute    = 30;    // AM-Fix Minute (London-Zeit)
+// input int    InpLbmaFixPmHour      = 15;    // PM-Fix Stunde (London-Zeit)
+// input int    InpLbmaFixPmMinute    = 0;     // PM-Fix Minute (London-Zeit)
 
 input group "=== Strategie Asia-Range-Breakout ==="
-input bool   InpAsiaAllowShort            = false; // Short-Breakouts erlaubt
+// InpAsiaAllowShort entfernt (2026-08-18): H-Test 2 Robustheits-Nachtest validiert
+// Long+Short, hardcodiert als ASIA_ALLOW_SHORT=true (s.o.).
 input bool   InpAsiaRequireRetest         = true;  // Retest-Pflicht vs. Sofort-Entry (H-Test 2)
 input int    InpAsiaBoxStartHour          = 0;     // Asia-Box Start (GMT-Stunde)
 input int    InpAsiaBoxEndHour            = 8;     // Asia-Box Ende (GMT-Stunde)
@@ -134,8 +177,8 @@ input int    InpMaxSpreadPoints    = 150;    // Friktionsgrenze (Points)
 input group "=== Risiko (uebergreifend) ==="
 input double InpRiskPctDipBuy      = 1.0;   // Risiko % je DipBuy-Trade (knowledge.md 4)
 input double InpRiskPctOverlap     = 1.0;   // Risiko % je Overlap-Trade
-input double InpRiskPctSweep       = 1.0;   // Risiko % je LiquiditySweep-Trade
-input double InpRiskPctLbmaFix     = 1.0;   // Risiko % je LBMA-Fix-Reversal-Trade
+// InpRiskPctSweep/InpRiskPctLbmaFix entfernt (2026-08-18): hardcodiert als SWEEP_RISK_PCT/
+// LBMAFIX_RISK_PCT (s.o.), irrelevant solange beide Module deaktiviert bleiben.
 input double InpRiskPctAsia        = 1.0;   // Risiko % je Asia-Range-Breakout-Trade
 input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies.md Teil F)
 input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
@@ -412,8 +455,8 @@ int OnInit(void)
    bool asiaHasPos    = PositionExistsForMagic(magicAsia);
 
    bool needH4Emas = InpUseOverlapModule || overlapHasPos;
-   bool needM15    = InpUseOverlapModule || overlapHasPos || InpUseSweepModule || sweepHasPos ||
-                      InpUseLbmaFixModule || lbmaHasPos || InpUseAsiaModule || asiaHasPos;
+   bool needM15    = InpUseOverlapModule || overlapHasPos || SWEEP_MODULE_ENABLED || sweepHasPos ||
+                      LBMAFIX_MODULE_ENABLED || lbmaHasPos || InpUseAsiaModule || asiaHasPos;
 
    //--- 4. MarketData mit TF-Konfiguration
    SMarketDataCfg mdCfg;
@@ -465,7 +508,7 @@ int OnInit(void)
    g_slots[1].module       = new CSignalOverlapTrend();
 
    CSignalOverlapTrend *overlap = (CSignalOverlapTrend *)g_slots[1].module;
-   overlap.Configure(OVERLAP_ALLOW_SHORT, OVERLAP_SWING_LOOKBACK, InpOverlapAtrStopMult,
+   overlap.Configure(OVERLAP_ALLOW_SHORT, OVERLAP_SWING_LOOKBACK, OVERLAP_ATR_STOP_MULT,
                      OVERLAP_ZONE_EXPIRY_BARS, magicOverlap);
 
    g_slots[1].tracker.Configure(_Symbol, magicOverlap);
@@ -479,20 +522,20 @@ int OnInit(void)
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15); // ATR vom M15 fuer Overlap (strategies.md Teil D)
 
-   //--- 6c. LiquiditySweep-Slot
-   g_slots[2].enabled      = InpUseSweepModule;
+   //--- 6c. LiquiditySweep-Slot (verworfen, ea.md 8.1 - hardcodiert deaktiviert)
+   g_slots[2].enabled      = SWEEP_MODULE_ENABLED;
    g_slots[2].magic        = magicSweep;
-   g_slots[2].riskPct      = InpRiskPctSweep;
+   g_slots[2].riskPct      = SWEEP_RISK_PCT;
    g_slots[2].trailAtrMult = OVERLAP_TRAIL_ATR_MULT; // M15-ATR-Trailing wie Overlap
    g_slots[2].module       = new CSignalLiquiditySweep();
 
    CSignalLiquiditySweep *sweep = (CSignalLiquiditySweep *)g_slots[2].module;
-   sweep.Configure(InpSwAllowShort, InpSwAtrStopMult, InpSwMinSweepAtrMult,
-                   InpSwUseWeekly, InpSwUseMonthly, InpSwUseYearly,
-                   InpSwReclaimBars, InpSwCooldownBars,
-                   InpSwSessionRestricted, InpSwUseTrendFilter,
-                   InpSwRoundStep, InpSwRoundTolerance,
-                   InpSwUseGsFilter, InpSwGsSymbol, InpSwGsLookback, magicSweep);
+   sweep.Configure(SWEEP_ALLOW_SHORT, SWEEP_ATR_STOP_MULT, SWEEP_MIN_SWEEP_ATR_MULT,
+                   SWEEP_USE_WEEKLY, SWEEP_USE_MONTHLY, SWEEP_USE_YEARLY,
+                   SWEEP_RECLAIM_BARS, SWEEP_COOLDOWN_BARS,
+                   SWEEP_SESSION_RESTRICTED, SWEEP_USE_TREND_FILTER,
+                   SWEEP_ROUND_STEP, SWEEP_ROUND_TOLERANCE,
+                   SWEEP_USE_GS_FILTER, SWEEP_GS_SYMBOL, SWEEP_GS_LOOKBACK, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
@@ -505,19 +548,19 @@ int OnInit(void)
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15); // ATR vom M15 fuer Sweep
 
-   //--- 6d. LBMA-Fix-Reversal-Slot
-   g_slots[3].enabled      = InpUseLbmaFixModule;
+   //--- 6d. LBMA-Fix-Reversal-Slot (verworfen, ea.md 8.1 - hardcodiert deaktiviert)
+   g_slots[3].enabled      = LBMAFIX_MODULE_ENABLED;
    g_slots[3].magic        = magicLbmaFix;
-   g_slots[3].riskPct      = InpRiskPctLbmaFix;
+   g_slots[3].riskPct      = LBMAFIX_RISK_PCT;
    g_slots[3].trailAtrMult = LBMAFIX_TRAIL_ATR_MULT;
    g_slots[3].module       = new CSignalLbmaFixReversal();
 
    CSignalLbmaFixReversal *lbmaFix = (CSignalLbmaFixReversal *)g_slots[3].module;
-   lbmaFix.Configure(InpLbmaAllowShort, InpLbmaAtrStopMult,
-                      InpLbmaMinMoveAtrMult, InpLbmaReversalAtrMult,
-                      InpLbmaPreFixBars, InpLbmaConfirmBars,
-                      InpLbmaFixAmHour, InpLbmaFixAmMinute,
-                      InpLbmaFixPmHour, InpLbmaFixPmMinute,
+   lbmaFix.Configure(LBMAFIX_ALLOW_SHORT, LBMAFIX_ATR_STOP_MULT,
+                      LBMAFIX_MIN_MOVE_ATR_MULT, LBMAFIX_REVERSAL_ATR_MULT,
+                      LBMAFIX_PRE_FIX_BARS, LBMAFIX_CONFIRM_BARS,
+                      LBMAFIX_FIX_AM_HOUR, LBMAFIX_FIX_AM_MINUTE,
+                      LBMAFIX_FIX_PM_HOUR, LBMAFIX_FIX_PM_MINUTE,
                       InpGmtOffsetWinter, InpGmtOffsetSummer, magicLbmaFix);
 
    g_slots[3].tracker.Configure(_Symbol, magicLbmaFix);
@@ -539,7 +582,7 @@ int OnInit(void)
    g_slots[4].module       = new CSignalAsiaRangeBreakout();
 
    CSignalAsiaRangeBreakout *asia = (CSignalAsiaRangeBreakout *)g_slots[4].module;
-   asia.Configure(InpAsiaAllowShort, InpAsiaRequireRetest,
+   asia.Configure(ASIA_ALLOW_SHORT, InpAsiaRequireRetest,
                    InpAsiaBoxStartHour, InpAsiaBoxEndHour,
                    InpAsiaRetestToleranceAtrMult, InpAsiaConfirmBars,
                    InpAsiaAtrStopMult,
@@ -591,8 +634,8 @@ int OnInit(void)
                _Symbol,
                InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
                InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
-               InpUseSweepModule   ? "ON" : "OFF", magicSweep,
-               InpUseLbmaFixModule ? "ON" : "OFF", magicLbmaFix,
+               SWEEP_MODULE_ENABLED   ? "ON" : "OFF", magicSweep,
+               LBMAFIX_MODULE_ENABLED ? "ON" : "OFF", magicLbmaFix,
                InpUseAsiaModule    ? "ON" : "OFF", magicAsia,
                AccountInfoDouble(ACCOUNT_EQUITY),
                g_clusterRiskGuard.IsDegraded() ? "true" : "false");
