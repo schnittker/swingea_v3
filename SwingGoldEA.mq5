@@ -59,7 +59,6 @@ const int    OVERLAP_EMA_SLOW_H4       = 150;
 const int    OVERLAP_PULLBACK_EMA_FAST = 15;
 const int    OVERLAP_PULLBACK_EMA_SLOW = 50;
 const int    OVERLAP_ATR_PERIOD_M15    = 14;
-const double OVERLAP_ATR_STOP_MULT     = 2.75;
 const int    OVERLAP_SWING_LOOKBACK    = 3;
 const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
 const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
@@ -76,6 +75,9 @@ input bool   InpUseOverlapModule   = true;   // Overlap-Strategie (H4-Bias/M15) 
 input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
 input bool   InpUseLbmaFixModule   = false;  // LBMA-Fix-Reversal (M15) - Default false (Hazard H14)
 input bool   InpUseAsiaModule      = false;  // Asia-Range-Breakout (M15) - Default false (Hazard H14)
+
+input group "=== Strategie Overlap ==="
+input double InpOverlapAtrStopMult = 2.75; // Stop-Abstand (ATR-M15-Multiplikator, H-Test 6 Plateau)
 
 input group "=== Strategie LiquiditySweep ==="
 input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
@@ -463,7 +465,7 @@ int OnInit(void)
    g_slots[1].module       = new CSignalOverlapTrend();
 
    CSignalOverlapTrend *overlap = (CSignalOverlapTrend *)g_slots[1].module;
-   overlap.Configure(OVERLAP_ALLOW_SHORT, OVERLAP_SWING_LOOKBACK, OVERLAP_ATR_STOP_MULT,
+   overlap.Configure(OVERLAP_ALLOW_SHORT, OVERLAP_SWING_LOOKBACK, InpOverlapAtrStopMult,
                      OVERLAP_ZONE_EXPIRY_BARS, magicOverlap);
 
    g_slots[1].tracker.Configure(_Symbol, magicOverlap);
