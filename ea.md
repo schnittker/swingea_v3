@@ -604,6 +604,16 @@ in `strategies.md` Teil C.4 dokumentierte Einschränkung (Asien trieb H1/2026 di
 Box-Annahme nicht mehr uneingeschränkt gültig) ist mit diesem Backtest-Zeitraum nicht
 geprüft; vor Live-Aktivierung zusätzlich Cross-Check auf 2026er-Teilfenster empfehlenswert.
 
+**Cross-Check 2026er-Teilfenster (2026-08-18):** Einzeltest mit Produktionswerten
+(`InpAsiaRequireRetest=true`, `InpAsiaAllowShort=true`, Asia solo), Zeitraum 2026-01-01 bis
+2026-08-18: nur 13 Trades, PF 0.54, WR 7.69% (1/13, Shorts 0/4), Exp. Payoff -5.13, DD
+3.44%/4.16%, Net Profit -66.72. Stichprobe weit unter der Mindestschwelle 30 — für sich allein
+kein belastbares Ergebnis. Die Richtung deckt sich aber genau mit der C.4-Sorge: PF fällt von
+1.29 (OOS 2024-2026, 328 Trades) auf 0.54, Trefferquote bricht auf praktisch Zufallsniveau ein.
+**Konsequenz:** C.4-Einschränkung bleibt unwiderlegt, eher durch einen ersten (schwachen)
+Datenpunkt gestützt statt entkräftet. `InpUseAsiaModule` bleibt `false`; keine Live-Aktivierung
+ohne größere 2026er-Stichprobe.
+
 Alle vier in der Testmatrix (8.1) vorgesehenen Eskalationsstufen für das `LiquiditySweep`-
 und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
 
