@@ -535,7 +535,7 @@ Der EA ist so gebaut, dass jede Hypothese ein A/B-Test über einen Schalter ist:
 | 2 | Retest-Pflicht schlägt Sofort-Entry | `InpAsiaRequireRetest` | Trefferquote + Expectancy (Phase 3/4) | **Bestätigt** (2026-08-18, s. 8.4) |
 | 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis | **Verworfen** (2026-08-17, s. 8.4) |
 | 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung | **Verworfen** (2026-08-17, s. 8.4) |
-| 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy | offen |
+| 5 | Kupfer/Gold-Bias schlägt DFII10 | `InpUseRegimeFilter` | Swing-Expectancy | **Nicht testbar** (2026-08-18, s. 8.4) |
 | 6 | Optimaler ATR-Multiplikator | `InpOverlapAtrStopMult` 1,5-3,5 | **Parameter-Plateau**, nicht Peak | **Bestätigt** (2026-08-18, s. 8.4) |
 
 **Auswertung über `DecisionLog`**, nicht nur über den Tester-Report: nur dort steht, welcher Filter wie viele Trades abgelehnt hat und was diese Trades gebracht hätten.
@@ -670,6 +670,28 @@ Deploy-Konfiguration nötig).
 (Default 2,75) im Code, kein Zurückbau zur Konstante — Input bleibt für künftige
 Re-Validierungen nützlich und entspricht dem etablierten Muster der anderen Module
 (`InpSwAtrStopMult`/`InpLbmaAtrStopMult`/`InpAsiaAtrStopMult`).
+
+**Hypothese 5 — Kupfer/Gold-Bias schlägt DFII10 (`InpUseRegimeFilter`, `RegimeClassifier`):**
+**nicht testbar**, mangels Datenzugriff auf beiden Vergleichsseiten. `RegimeClassifier.mqh`
+(4.5) ist bisher nicht implementiert — es existiert kein `InpUseRegimeFilter` im Code. Vor der
+Implementierung wurde geprüft, ob die für die Hypothese nötigen Datenquellen überhaupt
+verfügbar sind:
+
+- **Kupfer/Gold-Ratio:** Broker (IC Markets) bietet **kein** Kupfer-Symbol im Market Watch
+  (weder `XCUUSD` noch `COPPER` o.ä. gefunden). Das ist bereits in 4.2 als Fallback-Fall
+  vorgesehen (Zeile 226: "Kupfer | keiner → Kupfer/Gold-Bias aus"), betrifft hier aber nicht
+  nur einen Teilfilter, sondern die gesamte Vergleichsseite der Hypothese.
+- **DFII10:** FRED-Zeitreihe ohne MT5-Symbol, kein automatisierter Zugriff aus dem Tester ohne
+  manuellen CSV-Import/Custom-Symbol-Infrastruktur.
+
+Beide Seiten des A/B-Vergleichs ("Kupfer/Gold-Bias schlägt DFII10") sind damit ohne signifikanten
+Zusatzaufwand (Custom-Symbol-Import, Datenpflege) nicht umsetzbar. Anders als bei Hypothese 3/4
+ist das kein inhaltliches Ergebnis (kein Edge widerlegt), sondern ein Infrastruktur-Blocker.
+
+**Konsequenz:** Hypothese 5 wird nicht weiterverfolgt, `RegimeClassifier.mqh` wird nicht
+gebaut. Damit ist die Testmatrix aus 8.1 vollständig abgeschlossen: 4 von 6 Hypothesen
+entschieden (2 bestätigt, 2 verworfen), 1 nicht testbar (Hypothese 5), 1 als Formanalyse
+bestätigt (Hypothese 6).
 
 ### 8.5 Go-Live-Kette
 
