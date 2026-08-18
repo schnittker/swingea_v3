@@ -608,11 +608,41 @@ geprüft; vor Live-Aktivierung zusätzlich Cross-Check auf 2026er-Teilfenster em
 (`InpAsiaRequireRetest=true`, `InpAsiaAllowShort=true`, Asia solo), Zeitraum 2026-01-01 bis
 2026-08-18: nur 13 Trades, PF 0.54, WR 7.69% (1/13, Shorts 0/4), Exp. Payoff -5.13, DD
 3.44%/4.16%, Net Profit -66.72. Stichprobe weit unter der Mindestschwelle 30 — für sich allein
-kein belastbares Ergebnis. Die Richtung deckt sich aber genau mit der C.4-Sorge: PF fällt von
-1.29 (OOS 2024-2026, 328 Trades) auf 0.54, Trefferquote bricht auf praktisch Zufallsniveau ein.
-**Konsequenz:** C.4-Einschränkung bleibt unwiderlegt, eher durch einen ersten (schwachen)
-Datenpunkt gestützt statt entkräftet. `InpUseAsiaModule` bleibt `false`; keine Live-Aktivierung
-ohne größere 2026er-Stichprobe.
+kein belastbares Ergebnis. Auf den ersten Blick deckte sich die Richtung mit der C.4-Sorge
+(PF fällt von 1.29 auf 0.54, Trefferquote bricht ein), getrieben durch 4 Short-Trades mit 0%
+Trefferquote.
+
+**Robustheits-Nachtest (2026-08-18):** Um zu prüfen, ob die Short-Schwäche im 2026er-Fenster
+ein echter Effekt oder Stichproben-Rauschen ist, wurde `InpAsiaAllowShort=false` (Long-only)
+über die großen IS/OOS-Fenster erneut isoliert getestet (gleiche Modul-Isolation):
+
+| Fenster | Variante | Trades | PF | Exp. Payoff | DD% | Net Profit |
+|---|---|---|---|---|---|---|
+| IS 2020-2023 | Long+Short | 912 | 1.13 | 0.55 | 12.51 | 500.71 |
+| IS 2020-2023 | Long-only | 439 | 1.14 | 0.51 | 7.34/8.37 | 222.31 |
+| OOS 2024-2026 | Long+Short | 328 | 1.29 | 1.26 | 10.60 | 413.38 |
+| OOS 2024-2026 | Long-only | 223 | 1.12 | 0.66 | 5.29/6.70 | 146.16 |
+
+Über die großen Fenster ist Long-only **nicht** besser als Long+Short — IS praktisch identisch
+(PF 1.14 vs. 1.13), OOS sogar deutlich schlechter (PF 1.12 vs. 1.29, Profit 146.16 vs. 413.38).
+Das widerlegt die aus dem 13-Trade-Fenster abgeleitete Vermutung: Shorts tragen über das
+gesamte OOS-Fenster (das den 2026er-Zeitraum als Teilmenge enthält) netto positiv bei — die
+4 Short-Verluste im engen 2026-Fenster waren eine Pechserie, kein struktureller Effekt.
+
+Technischer Nebenbefund: `SignalAsiaRangeBreakout` nutzt eine gemeinsame State-Machine für
+beide Richtungen (nicht zwei unabhängige) — pro Box kann der Modul-State nur in einer Richtung
+gleichzeitig `ST_ARMED` sein. Ein zuerst armierter Short blockiert einen möglichen Long-Breakout
+in derselben Box für die Dauer der Retest-Bestätigung, obwohl die Exhausted-Flags pro Richtung
+unabhängig sind. Deshalb ist `InpAsiaAllowShort` nicht rein additiv (Long-Trade-Zahl steigt bei
+`false`, weil Short keine Boxen mehr "belegt": 912→439 Long-Trades IS trotz nur ~473 entfallener
+Short-Trades wäre bei reiner Addition zu erwarten, tatsächlich ist die Verschiebung größer).
+
+**Korrigierte Konsequenz:** Die C.4-Einschränkung ist durch diesen Nachtest **nicht** gestützt
+(der ursprüngliche 2026-Cross-Check-Einbruch war Stichproben-Rauschen). `InpAsiaAllowShort=true`
+bleibt unverändert (bringt über die großen Fenster mehr Profit und höheren OOS-PF).
+`InpUseAsiaModule` bleibt trotzdem vorerst `false` (Hazard H14) — die grundsätzliche C.4-Frage
+(hat sich das Asien-Verhalten 2026 fundamental geändert) ist damit weder bestätigt noch
+entkräftet, nur der spezifische kleine Cross-Check-Datenpunkt ist relativiert.
 
 Alle vier in der Testmatrix (8.1) vorgesehenen Eskalationsstufen für das `LiquiditySweep`-
 und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
