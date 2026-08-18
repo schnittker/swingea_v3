@@ -31,6 +31,7 @@
 #include "Include/SignalOverlapTrend.mqh"
 #include "Include/SignalLiquiditySweep.mqh"
 #include "Include/SignalLbmaFixReversal.mqh"
+#include "Include/SignalAsiaRangeBreakout.mqh"
 #include "Include/FilterStack.mqh"
 #include "Include/RiskManager.mqh"
 #include "Include/ClusterRiskGuard.mqh"
@@ -64,6 +65,8 @@ const int    OVERLAP_ZONE_EXPIRY_BARS  = 12;
 const double OVERLAP_TRAIL_ATR_MULT    = 4.0;
 // LbmaFixReversal
 const double LBMAFIX_TRAIL_ATR_MULT    = 3.0;
+// AsiaRangeBreakout
+const double ASIA_TRAIL_ATR_MULT       = 3.0;
 
 //====================== INPUTS ====================================
 
@@ -72,6 +75,7 @@ input bool   InpUseDipBuyModule    = true;   // DipBuy-Strategie (D1/H4) aktiv
 input bool   InpUseOverlapModule   = true;   // Overlap-Strategie (H4-Bias/M15) aktiv
 input bool   InpUseSweepModule     = false;  // LiquiditySweep-Reclaim (M15) - Default false (Hazard H14)
 input bool   InpUseLbmaFixModule   = false;  // LBMA-Fix-Reversal (M15) - Default false (Hazard H14)
+input bool   InpUseAsiaModule      = false;  // Asia-Range-Breakout (M15) - Default false (Hazard H14)
 
 input group "=== Strategie LiquiditySweep ==="
 input bool   InpSwAllowShort      = false; // Short-Sweeps erlaubt
@@ -102,8 +106,17 @@ input int    InpLbmaFixAmMinute    = 30;    // AM-Fix Minute (London-Zeit)
 input int    InpLbmaFixPmHour      = 15;    // PM-Fix Stunde (London-Zeit)
 input int    InpLbmaFixPmMinute    = 0;     // PM-Fix Minute (London-Zeit)
 
+input group "=== Strategie Asia-Range-Breakout ==="
+input bool   InpAsiaAllowShort            = false; // Short-Breakouts erlaubt
+input bool   InpAsiaRequireRetest         = true;  // Retest-Pflicht vs. Sofort-Entry (H-Test 2)
+input int    InpAsiaBoxStartHour          = 0;     // Asia-Box Start (GMT-Stunde)
+input int    InpAsiaBoxEndHour            = 8;     // Asia-Box Ende (GMT-Stunde)
+input double InpAsiaRetestToleranceAtrMult= 0.2;   // Retest-Toleranz (ATR-M15-Vielfaches)
+input int    InpAsiaConfirmBars           = 8;     // Max. M15-Bars fuer Retest-Bestaetigung
+input double InpAsiaAtrStopMult           = 1.5;   // Stop-Kappung (ATR-M15-Multiplikator)
+
 input group "=== Zeit / Session ==="
-input bool   InpUseSessionFilter   = false;  // Overlap-Einstieg nur 12:00-16:00 GMT (H-Test)
+input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (validiert IS+OOS, ea.md 8.4)
 input bool   InpUseWeekdayFilter   = false;  // Montag/Freitag-Sperre (H-Test)
 input int    InpOverlapStartGmtHour = 12;    // Overlap-Fenster Start (GMT-Stunde, inkl.)
 input int    InpOverlapEndGmtHour  = 16;     // Overlap-Fenster Ende (GMT-Stunde, exkl.)
@@ -121,6 +134,7 @@ input double InpRiskPctDipBuy      = 1.0;   // Risiko % je DipBuy-Trade (knowled
 input double InpRiskPctOverlap     = 1.0;   // Risiko % je Overlap-Trade
 input double InpRiskPctSweep       = 1.0;   // Risiko % je LiquiditySweep-Trade
 input double InpRiskPctLbmaFix     = 1.0;   // Risiko % je LBMA-Fix-Reversal-Trade
+input double InpRiskPctAsia        = 1.0;   // Risiko % je Asia-Range-Breakout-Trade
 input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies.md Teil F)
 input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
 input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
@@ -133,7 +147,7 @@ input double InpMaxTotalDDPct      = 100.0; // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
 
 input group "=== Infrastruktur ==="
-input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3, LbmaFix +4
+input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3, LbmaFix +4, Asia +5
 input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
 input bool   InpEnableEmailNotify  = false;  // E-Mail bei Trade-Open/-Close (Terminal: Tools->Options->Email + "Allow Email" im EA)
 
@@ -173,7 +187,7 @@ public:
   };
 
 //====================== GLOBALE OBJEKTE ============================
-CStrategySlot    g_slots[4];          // 0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix (feste Reihenfolge, Hazard H10)
+CStrategySlot    g_slots[5];          // 0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia (feste Reihenfolge, Hazard H10)
 CSymbolResolver  g_symbolResolver;
 CTimeContext     g_timeContext;
 CMarketData      g_marketData;
@@ -388,14 +402,16 @@ int OnInit(void)
    int  magicOverlap = MagicOverlapTrend(InpMagicBase);
    int  magicSweep   = MagicLiquiditySweep(InpMagicBase);
    int  magicLbmaFix = MagicLbmaFixReversal(InpMagicBase);
+   int  magicAsia    = MagicAsiaRangeBreakout(InpMagicBase);
    bool dipBuyHasPos  = PositionExistsForMagic(magicDipBuy);
    bool overlapHasPos = PositionExistsForMagic(magicOverlap);
    bool sweepHasPos   = PositionExistsForMagic(magicSweep);
    bool lbmaHasPos    = PositionExistsForMagic(magicLbmaFix);
+   bool asiaHasPos    = PositionExistsForMagic(magicAsia);
 
    bool needH4Emas = InpUseOverlapModule || overlapHasPos;
    bool needM15    = InpUseOverlapModule || overlapHasPos || InpUseSweepModule || sweepHasPos ||
-                      InpUseLbmaFixModule || lbmaHasPos;
+                      InpUseLbmaFixModule || lbmaHasPos || InpUseAsiaModule || asiaHasPos;
 
    //--- 4. MarketData mit TF-Konfiguration
    SMarketDataCfg mdCfg;
@@ -513,7 +529,32 @@ int OnInit(void)
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15);
 
-   //--- 6e. Kontoweite Komponenten
+   //--- 6e. Asia-Range-Breakout-Slot
+   g_slots[4].enabled      = InpUseAsiaModule;
+   g_slots[4].magic        = magicAsia;
+   g_slots[4].riskPct      = InpRiskPctAsia;
+   g_slots[4].trailAtrMult = ASIA_TRAIL_ATR_MULT;
+   g_slots[4].module       = new CSignalAsiaRangeBreakout();
+
+   CSignalAsiaRangeBreakout *asia = (CSignalAsiaRangeBreakout *)g_slots[4].module;
+   asia.Configure(InpAsiaAllowShort, InpAsiaRequireRetest,
+                   InpAsiaBoxStartHour, InpAsiaBoxEndHour,
+                   InpAsiaRetestToleranceAtrMult, InpAsiaConfirmBars,
+                   InpAsiaAtrStopMult,
+                   InpGmtOffsetWinter, InpGmtOffsetSummer, magicAsia);
+
+   g_slots[4].tracker.Configure(_Symbol, magicAsia);
+   g_slots[4].exec.Configure(_Symbol, magicAsia,
+                              g_symbolResolver.StopsLevelPoints(),
+                              g_symbolResolver.FreezeLevelPoints(),
+                              (int)MathRound(InpSlippageBufferPts),
+                              "SwingGoldAsia");
+   g_slots[4].manager.Configure(_Symbol, InpPartialPct, g_slots[4].trailAtrMult,
+                                 g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
+                                 g_symbolResolver.StopsLevelPoints(),
+                                 PERIOD_M15);
+
+   //--- 6f. Kontoweite Komponenten
    g_filterStack.Configure(_Symbol,
                             InpUseSpreadFilter, InpMaxSpreadPoints,
                             InpUseSessionFilter, InpUseWeekdayFilter);
@@ -536,7 +577,7 @@ int OnInit(void)
    g_notifications.Configure(InpEnableEmailNotify);
 
    //--- 7. Restart-Resilienz: offene eigene Positionen resynchronisieren
-   for(int i = 0; i < 4; i++)
+   for(int i = 0; i < 5; i++)
      {
       if(PositionExistsForMagic(g_slots[i].magic))
          SyncSlotFromBroker(g_slots[i]);
@@ -544,12 +585,13 @@ int OnInit(void)
 
    //--- 8. Init-Log (Beweis im Journal welche Konfiguration lief, Hazard H14)
    PrintFormat("SwingGoldEA v2 init OK | Symbol=%s | DipBuy=%s (Magic=%d) | Overlap=%s (Magic=%d) | "
-               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Equity=%.2f | ClusterDegraded=%s",
+               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Asia=%s (Magic=%d) | Equity=%.2f | ClusterDegraded=%s",
                _Symbol,
                InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
                InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
                InpUseSweepModule   ? "ON" : "OFF", magicSweep,
                InpUseLbmaFixModule ? "ON" : "OFF", magicLbmaFix,
+               InpUseAsiaModule    ? "ON" : "OFF", magicAsia,
                AccountInfoDouble(ACCOUNT_EQUITY),
                g_clusterRiskGuard.IsDegraded() ? "true" : "false");
 
@@ -562,7 +604,7 @@ int OnInit(void)
 void OnDeinit(const int reason)
   {
    //--- Alle Slots freigeben (auch nicht-aktivierte, Hazard H2)
-   for(int i = 0; i < 4; i++)
+   for(int i = 0; i < 5; i++)
       g_slots[i].Release();
 
    g_marketData.Deinit();
@@ -623,9 +665,9 @@ void OnTick(void)
         }
      }
 
-   //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, Hazard H10:
+   //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia, Hazard H10:
    //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
-   for(int s = 0; s < 4; s++)
+   for(int s = 0; s < 5; s++)
      {
       ENUM_TIMEFRAMES trigTf = g_slots[s].module.TriggerTimeframe();
       ENUM_TIMEFRAMES atrTf  = g_slots[s].module.AtrTimeframe();

@@ -531,7 +531,7 @@ Der EA ist so gebaut, dass jede Hypothese ein A/B-Test über einen Schalter ist:
 
 | # | Hypothese | Schalter | Metrik | Ergebnis |
 |---|---|---|---|---|
-| 1 | Session-Selektivität schlägt 24 h | `InpUseSessionFilter` | Expectancy/Trade, Profit-Faktor (Phase 3) | offen |
+| 1 | Session-Selektivität schlägt 24 h | `InpUseSessionFilter` | Expectancy/Trade, Profit-Faktor (Phase 3) | **Bestätigt** (2026-08-17, s. 8.4) |
 | 2 | Retest-Pflicht schlägt Sofort-Entry | `InpRequireRetest` | Trefferquote + Expectancy (Phase 3/4) | offen |
 | 3 | G/S-Ratio-Filter verbessert Longs | `InpUseSilverFilter` | Expectancy, gefilterte Trades vs. Ersparnis | **Verworfen** (2026-08-17, s. 8.4) |
 | 4 | LBMA-Fix-Reversal existiert | Phase-4-Modul solo | Reversal-Häufigkeit vs. Zufallserwartung | **Verworfen** (2026-08-17, s. 8.4) |
@@ -559,6 +559,27 @@ Ein D1-Swing-System liefert über 15 Jahre grob **50–150 Trades**. Das ist fü
 - Ergebnisse als **Größenordnung**, nicht als Punktschätzung lesen
 
 ### 8.4 Testergebnisse (Stand 2026-08-17)
+
+**Hypothese 1 — Session-Selektivität (`InpUseSessionFilter`, Overlap-Modul, Slot 1):**
+**bestätigt**, sowohl IS als auch OOS, mit ausreichender Stichprobe in beiden Fenstern.
+Isolierter A/B-Test (Overlap solo, DipBuy/Sweep/LbmaFix aus), Variante A =
+`InpUseSessionFilter=true` (Einstieg nur 12:00-16:00 GMT), Variante B = `false` (24 h):
+
+| Fenster | Variante | Trades | WR | PF | Exp. Payoff | Max DD% (Equity) | Net Profit |
+|---|---|---|---|---|---|---|---|
+| IS 2020-2023 | B (24h) | 549 | 42.81% | 1.17 | 0.41 | 7.58% | 223.50 |
+| IS 2020-2023 | A (Session) | 142 | 61.97% | 1.53 | 2.80 | 3.72% | 397.04 |
+| OOS 2024-2026 | B (24h) | 283 | 38.16% | 1.14 | 0.53 | 7.59% | 148.88 |
+| OOS 2024-2026 | A (Session) | 107 | 54.21% | 1.22 | 1.35 | 2.91% | 144.66 |
+
+PF>1 in beiden Fenstern für beide Varianten, A liegt aber durchgehend über B (IS +0.36,
+OOS +0.08 PF). Der Effekt schwächt sich OOS ab, bleibt aber in derselben Richtung, bei
+OOS-Trades 107 (>> Mindestschwelle 30). Risikoadjustiert ist der Vorteil von A OOS sogar
+deutlicher als beim reinen PF-Vergleich: Max DD halbiert (2.91% vs. 7.59%), Sharpe 7.44 vs.
+2.43, Recovery Factor 1.58 vs. 0.63, Win-Rate 54.21% vs. 38.16% — bei nahezu gleichem
+Net Profit trotz weniger als halb so vieler Trades. Erster Filter in der gesamten Testreihe
+mit robustem Edge in beiden Fenstern (anders als G/S-Ratio, Round-Number, LBMA-Fix).
+**Konsequenz:** Default von `InpUseSessionFilter` auf `true` geändert (SwingGoldEA.mq5).
 
 Alle vier in der Testmatrix (8.1) vorgesehenen Eskalationsstufen für das `LiquiditySweep`-
 und `LbmaFixReversal`-Modul (Slot 2/3) sind durchgetestet:
