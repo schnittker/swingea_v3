@@ -43,6 +43,7 @@
 #include "Include/TradeManager.mqh"
 #include "Include/DecisionLog.mqh"
 #include "Include/Notifications.mqh"
+#include "Include/NewsGuard.mqh"
 
 //====================== HARDCODED PARAMETER (optimiert 2020-2026) =
 // DipBuy
@@ -192,6 +193,12 @@ input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
 input double InpMaxTotalDDPct      = 100.0; // Gesamt-Kill-Switch
 input double InpPartialPct         = 50.0;  // Teilgewinn-Anteil
 
+input group "=== NewsGuard ==="
+input bool   InpUseNewsFilter         = false; // Master-Schalter (Hazard H14: default aus)
+input int    InpNewsBlackoutMinBefore = 5;     // Minuten vor High-Impact-News (E8: 5)
+input int    InpNewsBlackoutMinAfter  = 5;     // Minuten nach High-Impact-News (E8: 5)
+input string InpNewsCsvPath           = "news_schedule.csv"; // Tester-Fallback, Format: datetime;event;impact
+
 input group "=== Infrastruktur ==="
 input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3, LbmaFix +4, Asia +5
 input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
@@ -243,6 +250,7 @@ CClusterRiskGuard g_clusterRiskGuard;
 CDrawdownGuard   g_drawdownGuard;
 CDecisionLog     g_decisionLog;
 CNotifications   g_notifications;
+CNewsGuard       g_newsGuard;
 
 //+------------------------------------------------------------------+
 //| Prueft, ob eine eigene Position mit gegebener Magic existiert.   |
@@ -294,16 +302,17 @@ void SyncSlotFromBroker(CStrategySlot &slot)
 //| DrawdownGuard, ClusterRiskGuard, RiskManager und TradeExecution. |
 //| Schreibt in jedem Fall eine DecisionLog-Zeile.                  |
 //+------------------------------------------------------------------+
-void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
+void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal, const bool newsBlackout)
   {
    string rejectReason  = "";
    double clusterRiskPct = 0.0;
    bool   accepted       = true;
 
-   //--- 1. FilterStack (Spread + Session/Wochentag wenn session-restricted)
+   //--- 1. FilterStack (Spread + NewsGuard + Session/Wochentag wenn session-restricted)
    accepted = g_filterStack.Evaluate(proposal,
                                      slot.module.SessionRestricted(),
                                      g_timeContext,
+                                     newsBlackout,
                                      rejectReason);
 
    //--- 2. DrawdownGuard (kontoweit)
@@ -619,6 +628,9 @@ int OnInit(void)
    g_drawdownGuard.Configure(_Symbol, InpMagicBase, InpMaxDailyLossPct, InpMaxTotalDDPct);
    g_drawdownGuard.Update();
 
+   g_newsGuard.Configure(InpUseNewsFilter, InpNewsBlackoutMinBefore,
+                          InpNewsBlackoutMinAfter, InpNewsCsvPath);
+
    if(!g_decisionLog.Init(InpLogDecisions, "SwingGoldEA_DecisionLog.csv",
                           g_symbolResolver.Digits()))
       Print("SwingGoldEA: DecisionLog konnte nicht initialisiert werden - Telemetrie deaktiviert.");
@@ -634,13 +646,15 @@ int OnInit(void)
 
    //--- 8. Init-Log (Beweis im Journal welche Konfiguration lief, Hazard H14)
    PrintFormat("SwingGoldEA v2 init OK | Symbol=%s | DipBuy=%s (Magic=%d) | Overlap=%s (Magic=%d) | "
-               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Asia=%s (Magic=%d) | Equity=%.2f | ClusterDegraded=%s",
+               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Asia=%s (Magic=%d) | NewsGuard=%s | "
+               "Equity=%.2f | ClusterDegraded=%s",
                _Symbol,
                InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
                InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
                SWEEP_MODULE_ENABLED   ? "ON" : "OFF", magicSweep,
                LBMAFIX_MODULE_ENABLED ? "ON" : "OFF", magicLbmaFix,
                InpUseAsiaModule    ? "ON" : "OFF", magicAsia,
+               InpUseNewsFilter    ? "ON" : "OFF",
                AccountInfoDouble(ACCOUNT_EQUITY),
                g_clusterRiskGuard.IsDegraded() ? "true" : "false");
 
@@ -714,6 +728,11 @@ void OnTick(void)
         }
      }
 
+   //--- NewsGuard: einmal pro Tick berechnen, fuer Management UND neue Entries wiederverwenden
+   //--- (default aus, Hazard H14: bei InpUseNewsFilter=false immer false, kein Verhaltensunterschied).
+   string newsReason;
+   bool   newsBlackout = g_newsGuard.IsBlackoutNow(newsReason);
+
    //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia, Hazard H10:
    //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
    for(int s = 0; s < 5; s++)
@@ -753,7 +772,7 @@ void OnTick(void)
 
          //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing
          g_slots[s].manager.Manage(ticket, g_slots[s].module.GetDir(), g_slots[s].module.GetTargetPrice(),
-                                   g_marketData, g_slots[s].tracker, g_slots[s].exec);
+                                   g_marketData, g_slots[s].tracker, g_slots[s].exec, newsBlackout);
 
          continue; // kein neuer Entry solange Position offen
         }
@@ -786,7 +805,7 @@ void OnTick(void)
       if(!triggered || !proposal.valid)
          continue;
 
-      EvaluateAndExecute(g_slots[s], proposal);
+      EvaluateAndExecute(g_slots[s], proposal, newsBlackout);
      }
   }
 //+------------------------------------------------------------------+

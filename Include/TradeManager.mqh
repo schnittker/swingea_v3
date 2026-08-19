@@ -84,8 +84,12 @@ public:
    //| Teilgewinn-Ziel definiert).                                      |
    //+------------------------------------------------------------------+
    void              Manage(const ulong ticket, const ENUM_SIGNAL_DIR dir, const double targetPrice,
-                            CMarketData &md, CPositionTracker &tracker, CTradeExecution &exec)
+                            CMarketData &md, CPositionTracker &tracker, CTradeExecution &exec,
+                            const bool newsBlackout)
      {
+      if(newsBlackout)
+         return; // keine SL/TP-Aenderung, kein Teilschluss im Blackout-Fenster (E8-Vorgabe)
+
       double volume, openPrice, currentSL, currentTP;
       if(!tracker.GetVolume(ticket, volume))     return;
       if(!tracker.GetOpenPrice(ticket, openPrice)) return;

@@ -51,6 +51,7 @@ public:
    bool              Evaluate(const SignalProposal &proposal,
                               const bool sessionRestricted,
                               const CTimeContext &timeCtx,
+                              const bool newsBlackout,
                               string &outReason)
      {
       outReason = "";
@@ -70,6 +71,14 @@ public:
             outReason = StringFormat("Spread %d > InpMaxSpreadPoints %d", spreadPoints, m_maxSpreadPoints);
             return false;
            }
+        }
+
+      //--- NewsGuard-Blackout: gilt fuer ALLE Module, nicht nur session-beschraenkte
+      //--- (E8 One verbietet neue Orders 5 Min vor/nach High-Impact-News).
+      if(newsBlackout)
+        {
+         outReason = "NewsGuard: Blackout-Fenster aktiv";
+         return false;
         }
 
       //--- 2+3. Session/Wochentag: NUR fuer session-beschraenkte Module
