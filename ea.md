@@ -733,6 +733,99 @@ gebaut. Damit ist die Testmatrix aus 8.1 vollständig abgeschlossen: 4 von 6 Hyp
 entschieden (2 bestätigt, 2 verworfen), 1 nicht testbar (Hypothese 5), 1 als Formanalyse
 bestätigt (Hypothese 6).
 
+### 8.4a Risiko-%-Sensitivität DipBuy/Overlap (Stand 2026-08-19)
+
+Ziel: Profit maximieren (Nutzerziel ~10-15%/Jahr, Vergleich ETF-Sparpläne) und zusätzlich
+prüfen, ob der EA eine Prop-Firm-Challenge (E8-Stil, 500k$-Konto, Profit-Ziel 21%/$105k,
+Max-Drawdown 14%/$70k, Tages-DD 9,2%/$46k, kein Mindestzeitlimit) schaffen könnte. Isolierter
+Test: nur DipBuy+Overlap aktiv (Asia/Sweep/LbmaFix aus), Zeitraum 2020-01-01 bis 2026-08-17
+(~79,5 Monate), Deposit 3.000 EUR, Every-Tick-Modelling.
+
+**Zwischenfund (methodisch wichtig):** `Include/RiskManager.mqh` hat einen zweiten, von
+`InpRiskPctDipBuy`/`InpRiskPctOverlap` unabhängigen Deckel: `InpMaxRiskPctPerTrade`
+(Code-Default 2.0) kappt die berechnete Lot-Größe hart, nach der DrawdownGuard-Skalierung. Ein
+erster Optimierungslauf (Grid 6-20% für beide Risiko-Parameter, `InpMaxRiskPctPerTrade` im
+Tester unverändert auf 2.0) zeigte deshalb nur ein Plateau bei effektiv ~2% Realrisiko — kein
+echter Sensitivitätstest. Korrigierter Lauf: `InpMaxRiskPctPerTrade` im Tester auf 20 fixiert
+(nicht mehr bindend), Cluster-Gesamt-Deckel auf 22 angehoben, Optimierung über
+`InpRiskPctDipBuy` × `InpRiskPctOverlap`, Grid 2-10% in 1%-Schritten (81 Passes).
+
+| Kandidat | DipBuy % | Overlap % | Net Profit (3.000 EUR) | PF | Equity-DD | Trades | Recovery |
+|---|---|---|---|---|---|---|---|
+| Prop-Firm-Challenge (Max-DD<14%) | 2 | 6 | 1.096,20 (36,5%) | 1,21 | 11,51% | 302 | 2,06 |
+| Echtgeld-Konto (Schwelle<25% DD) | 6 | 9 | 1.671,41 (55,7%) | 1,21 | 17,11% | 305 | 1,73 |
+
+Der Challenge-Kandidat übertrifft das 21%-Profit-Ziel deutlich bei ~2,5 Prozentpunkten Puffer
+zum 14%-DD-Limit und dominiert alle anderen DD<14%-Kandidaten (z. B. DipBuy=10/Overlap=6: nur
+35,3% Profit bei höherem DD 11,76%). Der Echtgeld-Kandidat liefert den höchsten Profit im
+gesamten 81er-Grid, DD bleibt komfortabel unter der 25%-Schwelle.
+
+**Wichtig für Deployment (noch nicht umgesetzt):** Der Tester-Input `InpMaxRiskPctPerTrade`
+überschreibt nur die Laufzeit-Einstellung eines einzelnen Tests, nicht den Code-Default (bleibt
+`2.0` in `SwingGoldEA.mq5`). Bei Live-/Demo-Einsatz muss `InpMaxRiskPctPerTrade` im EA-Inputs-
+Dialog explizit auf ≥6 (Challenge-Kandidat) bzw. ≥9 (Echtgeld-Kandidat) gesetzt werden, sonst
+greift der versteckte 2%-Default-Deckel und die Ergebnisse entsprechen nicht dem getesteten Pass.
+
+Noch offen: (1) Skalierung auf 500k$ Kapital — s. 8.4b, **Ergebnis: skaliert NICHT linear**,
+Kandidat musste bei 500k/1:30 direkt neu ermittelt werden. (2) EA-Edge ist marktphasenabhängig
+(stark in Gold-Bullenmärkten 2024-2026, schwach in der Konsolidierung 2020-2024) — s. 8.4b für
+die reale chronologische Equity-Kurve statt linearer Hochrechnung. (3) Die Tages-Drawdown-
+Definition der Prop-Firm ("Dynamic Drawdown") ist nicht automatisch identisch mit MT5s
+Equity-DD%-Metrik — eigener Check nötig; der EA-eigene Tages-Kill-Switch
+(`InpDailyKillSwitchPct`, in diesen Tests auf 100=aus) müsste für einen echten
+Challenge-Vergleich auf ~9 gesetzt werden.
+
+### 8.4b Prop-Firm-Challenge direkt bei 500k$/1:30 validiert (Stand 2026-08-19)
+
+**Zwischenfund:** Der 3k-Challenge-Kandidat aus 8.4a (DipBuy=2%/Overlap=6%) skaliert nicht
+linear auf 500k$-Kapital. Einzeltest mit exakt diesen Parametern bei Deposit=500.000 USD,
+Leverage 1:30 (tatsächlicher Challenge-Hebel):
+
+| Kennzahl | 3.000 EUR (Referenz) | 500.000 USD/1:30 |
+|---|---|---|
+| Net Profit % | 36,5% | 33,96% |
+| Profit Factor | 1,21 | 1,17 |
+| Equity-DD Maximal | 11,51% | **15,05% — verletzt das 14%-Limit** |
+| Recovery Factor | 2,06 | 1,43 |
+| Margin Level (Tiefpunkt) | – | 109,34% (nahe Margin Call) |
+
+Ursache ist nicht (primär) der vermutete Broker-`SYMBOL_VOLUME_MAX`-Deckel, sondern die
+**Margin-Anforderung selbst**: bei 500k Kapital und dem realistischen 1:30-Hebel wird die
+verfügbare Margin zum limitierenden Faktor, Positionsgrößen lassen sich nicht mehr so "sauber"
+halten wie im prozentualen 3k-Modell (höhere DD, schlechterer Recovery Factor/PF trotz
+ähnlicher Trade-Zahl).
+
+**Korrigierte Optimierung direkt bei 500k$/1:30:** Grid `InpRiskPctDipBuy` × `InpRiskPctOverlap`
+0,5-6,0% in 0,5%-Schritten (144 Kombinationen, deckt den bekannten Verletzungsfall 2/6 mit ab),
+`InpMaxRiskPctPerTrade=20` und Cluster-Gesamt-Deckel=22 weiterhin neutralisiert. Aus den
+Zwischenergebnissen (Complete-Algorithm, pragmatisch nicht bis zum vollständigen Grid-Ende
+abgewartet — 14 Std. Restlaufzeit unverhältnismäßig) gewählter Kandidat:
+
+| Kandidat | DipBuy % | Overlap % | Net Profit (500k) | PF | Equity-DD | Balance-DD | Trades |
+|---|---|---|---|---|---|---|---|
+| Prop-Firm-Challenge (500k/1:30) | 0,5 | 5,0 | 150.524,90 (30,1%) | 1,18 | 12,29% | 11,36% | 316 |
+
+**Chronologische Equity-Kurven-Analyse** (Deal-für-Deal-Auswertung des Einzeltest-Exports,
+`ReportTester-*.xlsx`, 654 Deals): Das 21%-Profit-Ziel (605.000 $) wurde real erstmals am
+**2023-01-17 erreicht — nach nur ~3,0 Jahren (36,5 Monate)**, deutlich schneller als eine grobe
+lineare Hochrechnung (Gesamtprofit/Testdauer) mit ~4,6 Jahren nahegelegt hätte. Max. Balance-DD
+bis zu diesem Zeitpunkt: 10,17% — nie über dem 14%-Limit vor Zielerreichung. Bemerkenswert: das
+Ziel wurde bereits in der bislang als "Konsolidierung ohne echten Edge" eingestuften
+2020-2024-Phase erreicht, nicht erst im 2024-2026-Bullenmarkt — die Marktphasenabhängigkeit des
+Edges bestätigt sich hier nicht als Blocker für dieses konservative Setup.
+
+Grobe Tages-DD-Näherung (nur Balance-Sprünge bei Trade-Exit, ohne Floating-Equity offener
+Positionen — Untergrenze, keine exakte Prop-Firm-"Dynamic-Drawdown"-Berechnung): größter
+beobachteter Tages-Swing bis zur Zielerreichung ~5,0%, deutlich unter dem 9,2%-Limit. Für eine
+belastbare Aussage wäre eine Equity-Kurve auf Bar-Ebene nötig (offener Punkt).
+
+**Fazit:** Mit DipBuy=0,5%/Overlap=5,0% (`InpMaxRiskPctPerTrade` im Deployment auf ≥5 setzen)
+hätte der EA die Challenge im historischen Backtest nach ~3 Jahren bestanden, ohne das
+14%-Max-DD-Limit vorher zu verletzen. Kein Mindestzeitlimit in der Challenge-Struktur macht das
+unproblematisch. Reale Zukunftsperformance kann abweichen; die grundsätzliche
+Marktphasenabhängigkeit des Edges bleibt ein Risiko, auch wenn dieser Testlauf sie nicht
+bestätigt.
+
 ### 8.5 Go-Live-Kette
 
 1. Modul-Einzeltests (TimeContext mit DST-Fällen, RiskManager-Lotberechnung gegen Handrechnung, ClusterRiskGuard mit Fremdpositionen)

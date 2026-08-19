@@ -185,6 +185,7 @@ input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Clu
 input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
 input bool   InpClusterNoSLBlocks  = true;  // Position ohne SL blockiert neue Trades
 input double InpMaxRiskPctPerTrade = 2.0;   // Max. Risiko % pro Trade (Lot-Kappung, kapitalunabhaengig)
+input double InpMaxLotsPerTicket   = 20.0;  // Broker-Ticket-Cap (E8: 20 Lots XAUUSD), 0 = kein Cap
 input double InpFrictionSLMult     = 15.0;  // Mindest-Stop vs. Friktion
 input double InpSlippageBufferPts  = 20.0;  // Slippage-Puffer (Points)
 input double InpMaxDailyLossPct    = 3.0;   // Tages-Kill-Switch
@@ -331,9 +332,12 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal)
 
       double riskScale  = g_drawdownGuard.GetRiskScale();
       double scaledRisk = slot.riskPct * riskScale;
+      double volumeMax  = g_symbolResolver.VolumeMax();
+      if(InpMaxLotsPerTicket > 0.0)
+         volumeMax = MathMin(volumeMax, InpMaxLotsPerTicket);
       lots = g_riskManager.ComputeLots(refPrice, stopPrice,
                                        g_symbolResolver.VolumeMin(),
-                                       g_symbolResolver.VolumeMax(),
+                                       volumeMax,
                                        g_symbolResolver.VolumeStep(),
                                        scaledRisk);
 
