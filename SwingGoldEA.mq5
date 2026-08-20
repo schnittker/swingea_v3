@@ -412,7 +412,24 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal, const boo
    //--- useBrokerTP-Slots (aktuell nur London-Breakout) senden proposal.targetPrice als echten
    //--- Broker-TP, der danach nicht mehr veraendert wird (manageEnabled=false). Alle anderen
    //--- Slots senden weiterhin 0.0 - Exit laeuft ueber CTradeManager.Manage() (Trailing/Teilgewinn).
-   double tpToSend  = slot.useBrokerTP ? proposal.targetPrice : 0.0;
+   //--- EnforceMinStopDistance() (Schritt 3) kann stopPrice gegenueber proposal.stopPrice
+   //--- verbreitert haben (Friktions-/StopsLevel-Schutz) - ohne Anpassung wuerde das feste
+   //--- Chance-Risiko-Verhaeltnis (proposal.targetPrice bleibt sonst unveraendert) verzerrt.
+   //--- Deshalb TP proportional mitverschieben, damit das Verhaeltnis erhalten bleibt.
+   double tpToSend = 0.0;
+   if(slot.useBrokerTP)
+     {
+      tpToSend = proposal.targetPrice;
+      double origStopDist = MathAbs(refPrice - proposal.stopPrice);
+      double widenedStopDist = MathAbs(refPrice - stopPrice);
+      if(origStopDist > 0.0 && widenedStopDist > origStopDist)
+        {
+         double origTargetDist = MathAbs(proposal.targetPrice - refPrice);
+         double scale          = widenedStopDist / origStopDist;
+         double newTargetDist  = origTargetDist * scale;
+         tpToSend = (proposal.dir == SIGNAL_LONG) ? refPrice + newTargetDist : refPrice - newTargetDist;
+        }
+     }
    ulong  dealTicket = 0;
    bool   sent       = slot.exec.SendMarket(proposal.dir, lots, stopPrice, tpToSend, dealTicket);
 
