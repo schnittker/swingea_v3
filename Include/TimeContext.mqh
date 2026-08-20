@@ -122,6 +122,19 @@ public:
      }
 
    //+------------------------------------------------------------------+
+   //| Aktuelle GMT-Stunde (0-23). Fuer Module mit eigener, generischer|
+   //| Zeitfenster-Logik (z.B. SignalLondonBreakout), die keine feste  |
+   //| Overlap-Fenster-Semantik von IsInOverlapWindow() brauchen.      |
+   //+------------------------------------------------------------------+
+   int               GmtHour(void) const
+     {
+      datetime gmt = GmtNow();
+      MqlDateTime dt;
+      TimeToStruct(gmt, dt);
+      return dt.hour;
+     }
+
+   //+------------------------------------------------------------------+
    //| Ist der Overlap-Handelszeitraum aktiv?                          |
    //| Prueft auf die konfigurierte GMT-Stunde (12:00-16:00 Default).  |
    //+------------------------------------------------------------------+

@@ -826,6 +826,20 @@ unproblematisch. Reale Zukunftsperformance kann abweichen; die grundsätzliche
 Marktphasenabhängigkeit des Edges bleibt ein Risiko, auch wenn dieser Testlauf sie nicht
 bestätigt.
 
+### 8.4c London-Range-Breakout (M15) — neues Tier-3-Modul (Stand 2026-08-20)
+
+Sechster, komplett eigenständiger Slot (`SignalLondonBreakout.mqh`, eigene Magic-Nummer
+`MAGIC_OFFSET_LONDONBO=6`) für eine dedizierte 200k$-Prop-Firm-Challenge (10% Ziel, 3%
+Tages-Verlust, 10% Max-Verlust). Klassischer Range-Breakout: Box aus den M15-Bars
+08:00-13:00 GMT, Entry-Fenster 13:00-14:00 GMT bei Ausbruch über/unter die Box-Kante
+(Kerzenschluss-Basis), ATR-Stop, festes 1:2-Chance-Risiko-Verhältnis als **echter
+Broker-TP** (kein Trailing/Teilgewinn — abweichend vom bisherigen Muster der übrigen
+Module, siehe `CStrategySlot.useBrokerTP`/`manageEnabled`). Max. 1 Trade/Tag, optionaler
+Zwangsschluss vor Tagesende (`forceCloseGmtHour`, "kein Overnight"). Neu, **unvalidiert** —
+vor Go-Live zwingend 100-200 Trades im Strategy Tester prüfen (Preset
+`Presets/SwingGoldEA_LondonBreakout200k.set`). Bestehende Module (DipBuy/Overlap/Asia/
+Sweep/LbmaFix) sind davon unberührt, keine Regressionsgefahr.
+
 ### 8.5 Go-Live-Kette
 
 1. Modul-Einzeltests (TimeContext mit DST-Fällen, RiskManager-Lotberechnung gegen Handrechnung, ClusterRiskGuard mit Fremdpositionen)

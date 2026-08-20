@@ -166,6 +166,18 @@ Bei Ratio-Extremen (>100 oder <40) Mean Reversion.
 
 > **Die Ratio ist als Filter (Tier 1) wertvoller als als Trade.**
 
+#### 8. London-Range-Breakout (M15)
+
+Klassischer Session-Breakout: Box aus der Range 08:00-13:00 GMT (vor London-Eröffnung bis
+kurz vor Overlap), Einstieg im Fenster 13:00-14:00 GMT bei Ausbruch über/unter die Box-Kante,
+ATR-Stop, festes 1:2-Ziel als echter Broker-Take-Profit (kein Trailing). Implementiert als
+eigenständiges Modul (`Include/SignalLondonBreakout.mqh`, eigene Magic-Nummer) für eine
+dedizierte 200k$-Prop-Firm-Challenge, **komplett unabhängig** von den übrigen Modulen.
+
+> **Neu, unvalidiert** (Stand 2026-08-20) — kein Backtest-Nachweis, im Gegensatz zu den
+> anderen Tier-3-Ansätzen auch kein struktureller Wissensbasis-Bezug (reines Standard-Setup).
+> Vor Einsatz zwingend 100-200 Trades im Strategy Tester prüfen.
+
 ---
 
 ## Teil D – Timeframe-Empfehlung

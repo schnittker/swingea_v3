@@ -34,6 +34,7 @@
 #include "Include/SignalLiquiditySweep.mqh"
 #include "Include/SignalLbmaFixReversal.mqh"
 #include "Include/SignalAsiaRangeBreakout.mqh"
+#include "Include/SignalLondonBreakout.mqh"
 #include "Include/FilterStack.mqh"
 #include "Include/RiskManager.mqh"
 #include "Include/ClusterRiskGuard.mqh"
@@ -161,6 +162,19 @@ input double InpAsiaRetestToleranceAtrMult= 0.2;   // Retest-Toleranz (ATR-M15-V
 input int    InpAsiaConfirmBars           = 8;     // Max. M15-Bars fuer Retest-Bestaetigung
 input double InpAsiaAtrStopMult           = 1.5;   // Stop-Kappung (ATR-M15-Multiplikator)
 
+input group "=== Strategie London-Breakout ==="
+input bool   InpUseLondonModule           = false; // London-Range-Breakout (M15) - Default false (Hazard H14), Tier 3/neu
+input double InpRiskPctLondonBreakout     = 0.25;  // Risiko % je London-Breakout-Trade
+input int    InpLondonRangeStartGmtHour   = 8;      // Range-Bildung Start (GMT-Stunde)
+input int    InpLondonRangeEndGmtHour     = 13;     // Range-Bildung Ende (GMT-Stunde, Range wird eingefroren)
+input int    InpLondonEntryStartGmtHour   = 13;     // Entry-Fenster Start (GMT-Stunde)
+input int    InpLondonEntryEndGmtHour     = 14;     // Entry-Fenster Ende (GMT-Stunde, exkl.)
+input double InpLondonAtrStopMult         = 1.0;    // Stop-Abstand (ATR-M15-Multiplikator)
+input double InpLondonRRMult              = 2.0;    // Ziel = Stop-Abstand * RRMult (fixer Broker-TP)
+input double InpLondonMinBreakoutAtrMult  = 0.0;    // Mindest-Puffer ueber Range-Kante (ATR-M15-Vielfaches)
+input bool   InpLondonDisableFriday       = false;  // Freitags kein Range-/Entry-Aufbau
+input int    InpLondonForceCloseGmtHour   = 21;     // Zwangsschluss vor Tagesende (GMT-Stunde), -1 = aus
+
 input group "=== Zeit / Session ==="
 input bool   InpUseSessionFilter   = true;   // Overlap-Einstieg nur 12:00-16:00 GMT (validiert IS+OOS, ea.md 8.4)
 input bool   InpUseWeekdayFilter   = false;  // Montag/Freitag-Sperre (H-Test)
@@ -200,7 +214,7 @@ input int    InpNewsBlackoutMinAfter  = 5;     // Minuten nach High-Impact-News 
 input string InpNewsCsvPath           = "news_schedule.csv"; // Tester-Fallback, Format: datetime;event;impact
 
 input group "=== Infrastruktur ==="
-input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3, LbmaFix +4, Asia +5
+input int    InpMagicBase          = 770000; // Basis, DipBuy +1, Overlap +2, Sweep +3, LbmaFix +4, Asia +5, London +6
 input bool   InpLogDecisions       = true;   // Telemetrie (DecisionLog.csv)
 input bool   InpEnableEmailNotify  = false;  // E-Mail bei Trade-Open/-Close (Terminal: Tools->Options->Email + "Allow Email" im EA)
 
@@ -219,13 +233,18 @@ public:
    double             riskPct;
    double             trailAtrMult;
    ulong              lastTicket;    // letztes bekanntes Positions-Ticket (fuer History-Lookup nach externem Close)
+   bool               useBrokerTP;      // true = proposal.targetPrice als echter Broker-TP senden (Default false)
+   bool               manageEnabled;    // false = TradeManager.Manage() fuer diesen Slot ueberspringen (Default true)
+   int                forceCloseGmtHour; // >=0 = Zwangsschluss ab dieser GMT-Stunde, -1 = aus (Default)
    CSignalModuleBase *module;     // heap-alloziert, Release() pflicht
    CPositionTracker   tracker;
    CTradeExecution    exec;
    CTradeManager      manager;
 
                      CStrategySlot(void): enabled(false), magic(0), riskPct(1.0),
-                        trailAtrMult(2.5), lastTicket(0), module(NULL) {}
+                        trailAtrMult(2.5), lastTicket(0),
+                        useBrokerTP(false), manageEnabled(true), forceCloseGmtHour(-1),
+                        module(NULL) {}
 
    //--- Gibt den heap-allozierten Modul-Zeiger frei. Fuer ALLE Slots
    //--- in OnDeinit aufrufen (auch bei disabled, ea.md H2).
@@ -240,7 +259,7 @@ public:
   };
 
 //====================== GLOBALE OBJEKTE ============================
-CStrategySlot    g_slots[5];          // 0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia (feste Reihenfolge, Hazard H10)
+CStrategySlot    g_slots[6];          // 0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia, 5=LondonBreakout (feste Reihenfolge, Hazard H10)
 CSymbolResolver  g_symbolResolver;
 CTimeContext     g_timeContext;
 CMarketData      g_marketData;
@@ -390,8 +409,12 @@ void EvaluateAndExecute(CStrategySlot &slot, SignalProposal &proposal, const boo
      }
 
    //--- 5. Order senden
-   ulong dealTicket = 0;
-   bool  sent       = slot.exec.SendMarket(proposal.dir, lots, stopPrice, 0.0, dealTicket);
+   //--- useBrokerTP-Slots (aktuell nur London-Breakout) senden proposal.targetPrice als echten
+   //--- Broker-TP, der danach nicht mehr veraendert wird (manageEnabled=false). Alle anderen
+   //--- Slots senden weiterhin 0.0 - Exit laeuft ueber CTradeManager.Manage() (Trailing/Teilgewinn).
+   double tpToSend  = slot.useBrokerTP ? proposal.targetPrice : 0.0;
+   ulong  dealTicket = 0;
+   bool   sent       = slot.exec.SendMarket(proposal.dir, lots, stopPrice, tpToSend, dealTicket);
 
    g_decisionLog.Write(slot.module.Name(), proposal.dir, refPrice, stopPrice,
                        proposal.targetPrice, proposal.atrAtSignal, spread, lots,
@@ -461,15 +484,18 @@ int OnInit(void)
    int  magicSweep   = MagicLiquiditySweep(InpMagicBase);
    int  magicLbmaFix = MagicLbmaFixReversal(InpMagicBase);
    int  magicAsia    = MagicAsiaRangeBreakout(InpMagicBase);
+   int  magicLondon  = MagicLondonBreakout(InpMagicBase);
    bool dipBuyHasPos  = PositionExistsForMagic(magicDipBuy);
    bool overlapHasPos = PositionExistsForMagic(magicOverlap);
    bool sweepHasPos   = PositionExistsForMagic(magicSweep);
    bool lbmaHasPos    = PositionExistsForMagic(magicLbmaFix);
    bool asiaHasPos    = PositionExistsForMagic(magicAsia);
+   bool londonHasPos  = PositionExistsForMagic(magicLondon);
 
    bool needH4Emas = InpUseOverlapModule || overlapHasPos;
    bool needM15    = InpUseOverlapModule || overlapHasPos || SWEEP_MODULE_ENABLED || sweepHasPos ||
-                      LBMAFIX_MODULE_ENABLED || lbmaHasPos || InpUseAsiaModule || asiaHasPos;
+                      LBMAFIX_MODULE_ENABLED || lbmaHasPos || InpUseAsiaModule || asiaHasPos ||
+                      InpUseLondonModule || londonHasPos;
 
    //--- 4. MarketData mit TF-Konfiguration
    SMarketDataCfg mdCfg;
@@ -612,7 +638,38 @@ int OnInit(void)
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15);
 
-   //--- 6f. Kontoweite Komponenten
+   //--- 6f. London-Breakout-Slot (Tier 3, neu/unvalidiert - eigener Slot, komplett unabhaengig
+   //---     von DipBuy/Overlap/Asia: echter Broker-TP, kein Trailing/Teilgewinn, Zwangsschluss
+   //---     vor Tagesende. manager.Configure wird trotzdem aufgerufen (Konsistenz mit
+   //---     Slot-Struktur), wegen manageEnabled=false aber nie tatsaechlich benutzt.)
+   g_slots[5].enabled           = InpUseLondonModule;
+   g_slots[5].magic             = magicLondon;
+   g_slots[5].riskPct           = InpRiskPctLondonBreakout;
+   g_slots[5].trailAtrMult      = 0.0; // ungenutzt (manageEnabled=false)
+   g_slots[5].useBrokerTP       = true;
+   g_slots[5].manageEnabled     = false;
+   g_slots[5].forceCloseGmtHour = InpLondonForceCloseGmtHour;
+   g_slots[5].module            = new CSignalLondonBreakout();
+
+   CSignalLondonBreakout *london = (CSignalLondonBreakout *)g_slots[5].module;
+   london.Configure(InpLondonRangeStartGmtHour, InpLondonRangeEndGmtHour,
+                     InpLondonEntryStartGmtHour, InpLondonEntryEndGmtHour,
+                     InpLondonAtrStopMult, InpLondonRRMult,
+                     InpLondonMinBreakoutAtrMult, InpLondonDisableFriday,
+                     InpGmtOffsetWinter, InpGmtOffsetSummer, magicLondon);
+
+   g_slots[5].tracker.Configure(_Symbol, magicLondon);
+   g_slots[5].exec.Configure(_Symbol, magicLondon,
+                              g_symbolResolver.StopsLevelPoints(),
+                              g_symbolResolver.FreezeLevelPoints(),
+                              (int)MathRound(InpSlippageBufferPts),
+                              "SwingGoldLondonBO");
+   g_slots[5].manager.Configure(_Symbol, InpPartialPct, g_slots[5].trailAtrMult,
+                                 g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
+                                 g_symbolResolver.StopsLevelPoints(),
+                                 PERIOD_M15);
+
+   //--- 6g. Kontoweite Komponenten
    g_filterStack.Configure(_Symbol,
                             InpUseSpreadFilter, InpMaxSpreadPoints,
                             InpUseSessionFilter, InpUseWeekdayFilter);
@@ -638,7 +695,7 @@ int OnInit(void)
    g_notifications.Configure(InpEnableEmailNotify);
 
    //--- 7. Restart-Resilienz: offene eigene Positionen resynchronisieren
-   for(int i = 0; i < 5; i++)
+   for(int i = 0; i < 6; i++)
      {
       if(PositionExistsForMagic(g_slots[i].magic))
          SyncSlotFromBroker(g_slots[i]);
@@ -646,14 +703,15 @@ int OnInit(void)
 
    //--- 8. Init-Log (Beweis im Journal welche Konfiguration lief, Hazard H14)
    PrintFormat("SwingGoldEA v2 init OK | Symbol=%s | DipBuy=%s (Magic=%d) | Overlap=%s (Magic=%d) | "
-               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Asia=%s (Magic=%d) | NewsGuard=%s | "
-               "Equity=%.2f | ClusterDegraded=%s",
+               "Sweep=%s (Magic=%d) | Lbma=%s (Magic=%d) | Asia=%s (Magic=%d) | London=%s (Magic=%d) | "
+               "NewsGuard=%s | Equity=%.2f | ClusterDegraded=%s",
                _Symbol,
                InpUseDipBuyModule ? "ON" : "OFF", magicDipBuy,
                InpUseOverlapModule ? "ON" : "OFF", magicOverlap,
                SWEEP_MODULE_ENABLED   ? "ON" : "OFF", magicSweep,
                LBMAFIX_MODULE_ENABLED ? "ON" : "OFF", magicLbmaFix,
                InpUseAsiaModule    ? "ON" : "OFF", magicAsia,
+               InpUseLondonModule  ? "ON" : "OFF", magicLondon,
                InpUseNewsFilter    ? "ON" : "OFF",
                AccountInfoDouble(ACCOUNT_EQUITY),
                g_clusterRiskGuard.IsDegraded() ? "true" : "false");
@@ -667,7 +725,7 @@ int OnInit(void)
 void OnDeinit(const int reason)
   {
    //--- Alle Slots freigeben (auch nicht-aktivierte, Hazard H2)
-   for(int i = 0; i < 5; i++)
+   for(int i = 0; i < 6; i++)
       g_slots[i].Release();
 
    g_marketData.Deinit();
@@ -733,9 +791,10 @@ void OnTick(void)
    string newsReason;
    bool   newsBlackout = g_newsGuard.IsBlackoutNow(newsReason);
 
-   //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia, Hazard H10:
-   //--- bei simultanen Bar-Rollover beansprucht DipBuy das Budget zuerst)
-   for(int s = 0; s < 5; s++)
+   //--- Slot-Loop in fester Reihenfolge (0=DipBuy, 1=Overlap, 2=Sweep, 3=LbmaFix, 4=Asia,
+   //--- 5=LondonBreakout, Hazard H10: bei simultanen Bar-Rollover beansprucht DipBuy das
+   //--- Budget zuerst)
+   for(int s = 0; s < 6; s++)
      {
       ENUM_TIMEFRAMES trigTf = g_slots[s].module.TriggerTimeframe();
       ENUM_TIMEFRAMES atrTf  = g_slots[s].module.AtrTimeframe();
@@ -770,9 +829,21 @@ void OnTick(void)
 
          g_slots[s].lastTicket = ticket; // fuer History-Lookup nach externem Close merken
 
-         //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing
-         g_slots[s].manager.Manage(ticket, g_slots[s].module.GetDir(), g_slots[s].module.GetTargetPrice(),
-                                   g_marketData, g_slots[s].tracker, g_slots[s].exec, newsBlackout);
+         //--- Kein Overnight (z.B. London-Breakout): Zwangsschluss vor Tagesende. Bei Auslösung
+         //--- kein Manage() mehr in diesem Tick - die "Position extern geschlossen"-Erkennung
+         //--- (naechster Tick, ST_IN_POSITION + hasPosition==false) greift danach automatisch
+         //--- inkl. E-Mail-Close-Notification/DecisionLog (kein Duplikat-Code noetig).
+         if(g_slots[s].forceCloseGmtHour >= 0 && g_timeContext.GmtHour() >= g_slots[s].forceCloseGmtHour)
+           {
+            g_slots[s].exec.ClosePosition(ticket);
+            continue;
+           }
+
+         //--- TradeManager: Teilgewinn, Breakeven, ATR-Trailing (nur wenn fuer diesen Slot
+         //--- aktiv - London-Breakout laesst SL/TP nach dem Entry bewusst unveraendert).
+         if(g_slots[s].manageEnabled)
+            g_slots[s].manager.Manage(ticket, g_slots[s].module.GetDir(), g_slots[s].module.GetTargetPrice(),
+                                      g_marketData, g_slots[s].tracker, g_slots[s].exec, newsBlackout);
 
          continue; // kein neuer Entry solange Position offen
         }

@@ -16,6 +16,7 @@
 #define MAGIC_OFFSET_SWEEP    3   // LiquiditySweep-Reclaim (Tier 2.1)
 #define MAGIC_OFFSET_LBMAFIX  4   // LBMA-Fix-Reversal (Tier 3, experimentell)
 #define MAGIC_OFFSET_ASIA     5   // Asia-Range-Breakout (Tier 2, Hypothese 2)
+#define MAGIC_OFFSET_LONDONBO 6   // London-Range-Breakout (M15, Tier 3, neu/unvalidiert)
 
 //+------------------------------------------------------------------+
 //| Liefert die Magic-Nummer des DipBuy-Moduls fuer die gegebene     |
@@ -56,6 +57,14 @@ int MagicLbmaFixReversal(const int magicBase)
 int MagicAsiaRangeBreakout(const int magicBase)
   {
    return magicBase + MAGIC_OFFSET_ASIA;
+  }
+
+//+------------------------------------------------------------------+
+//| Liefert die Magic-Nummer des LondonBreakout-Moduls.             |
+//+------------------------------------------------------------------+
+int MagicLondonBreakout(const int magicBase)
+  {
+   return magicBase + MAGIC_OFFSET_LONDONBO;
   }
 
 #endif // __SWINGGOLD_MAGICNUMBERS_MQH__
