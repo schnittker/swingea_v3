@@ -1,13 +1,25 @@
 ; SwingGoldEA - E8 One Challenge (500k$, 1:30 Hebel), Stand 2026-08-20
-; Basis: Pass 108 (500k/1:30-Test), 30,1% Profit, DD 12,29% Equity / 11,36% Balance
+; Basis: Pass 108 (500k/1:30-Test, Lot-Cap-Retest), 35,19% Profit (175.961,77$),
+;   DD 12,29% Equity / 11,36% Balance, 316 Trades
 ; InpMaxLotsPerTicket=20 ist PFLICHT fuer E8 (Broker-Ticket-Cap XAUUSD) - nicht auf 0 setzen
 ; InpUseNewsFilter=false ist in der Challenge-Phase korrekt (News-Trading dort unbeschraenkt,
 ;   nur die spaetere Performance-Phase verbietet Trades +-5 Min um High-Impact-News)
-; ACHTUNG - noch offener Punkt: E8s echte "Dynamic Drawdown" rastet auf dem hoechsten
-;   GESCHLOSSENEN Balance-Stand ein, nicht auf dem Equity-Peak wie CDrawdownGuard hier -
-;   InpMaxDailyLossPct/InpMaxTotalDDPct sind interne Sicherheitsnetze, keine exakte
-;   Nachbildung der E8-Regel. Lot-Cap-Retest (Pass 108 mit aktivem 20-Lot-Cap) war zuletzt
-;   noch offen/lief beim Nutzer.
+; InpMaxDailyLossPct=9.0 (statt Code-Default 3.0) an E8s echtes 9,2%-Tages-DD-Limit angenaehert
+;   - so im validierten Pass-108-Testlauf verwendet.
+; GEKLAERT (2026-08-20): E8s echte "Dynamic Drawdown" rastet auf dem hoechsten GESCHLOSSENEN
+;   Balance-Stand ein, nicht auf dem Equity-Peak wie CDrawdownGuard hier - mathematisch bewiesen,
+;   dass CDrawdownGuards Equity-Peak-DD IMMER >= E8s echter DD ist (sichere, nie unterschaetzende
+;   Naeherung). Versuch, InpMaxTotalDDPct als automatischen 14%-Hardstop zu kalibrieren, wurde
+;   verworfen: das Guard-Design (permanentes Veto, kein Peak-Reset) zerstoert die Strategie bei
+;   jedem Schwellwert unter der historischen DD-Schwankung (Kontrolltest mit 8 -> -30.453$ statt
+;   +175.961$). InpMaxTotalDDPct bleibt daher bei 100 (deaktiviert), Schutz laeuft ueber das
+;   weiche Risk-Scaling (GetRiskScale). Siehe MEMORY.md fuer Details.
+; GEKLAERT (2026-08-20): Lot-Cap-Retest zeigte im Tester (Netting-Demo-Konto) 3 Faelle, in
+;   denen DipBuy+Overlap zu einer Netto-Position >20 Lots verschmolzen (bis 20,48). E8 Markets
+;   bestaetigt aber: E8 One Forex/Crypto-Konten laufen im HEDGING-Modus (nur Futures = Netting).
+;   Auf dem echten E8-Konto bekommen DipBuy/Overlap getrennte Tickets, InpMaxLotsPerTicket
+;   greift dort korrekt pro Ticket - der Netting-Fund war ein Tester-Konto-Artefakt, kein
+;   reales E8-Risiko. Siehe MEMORY.md fuer Details.
 ;
 InpUseDipBuyModule=true
 InpUseOverlapModule=true
@@ -39,7 +51,7 @@ InpMaxRiskPctPerTrade=20.0
 InpMaxLotsPerTicket=20.0
 InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
-InpMaxDailyLossPct=3.0
+InpMaxDailyLossPct=9.0
 InpMaxTotalDDPct=100.0
 InpPartialPct=50.0
 InpUseNewsFilter=false
