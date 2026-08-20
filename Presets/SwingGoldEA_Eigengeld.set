@@ -1,0 +1,50 @@
+; SwingGoldEA - Eigengeld-Konto (IG Markets), Stand 2026-08-20
+; Basis: Pass 67 (Risiko-%-Sensitivitaet DipBuy/Overlap, s. MEMORY.md Live-Deployment-Plan)
+; Getestet: 3.000 EUR Startkapital, 55,7% Profit, DD 17,11% (2020-2026, IS+OOS)
+; ACHTUNG - noch offene Punkte vor Go-Live (s. MEMORY.md):
+;   - Monatliche Einzahlungen (500 EUR/Monat) wurden NICHT im Backtest simuliert
+;   - IG-Markets-Broker-Spezifikation (Symbol-Suffix, Kontraktgroesse, GMT-Offset,
+;     Tick-Value/Hazard H15) noch nicht gegen diese Settings geprueft
+;   - InpMaxClusterRiskPct=22 ist bewusst locker (neutralisiert den Cluster-Guard fuer
+;     DipBuy+Overlap) - war so im validierten Grid, kein zusaetzlicher Sicherheitsdeckel
+;
+InpUseDipBuyModule=true
+InpUseOverlapModule=true
+InpUseAsiaModule=false
+InpAsiaRequireRetest=true
+InpAsiaBoxStartHour=0
+InpAsiaBoxEndHour=8
+InpAsiaRetestToleranceAtrMult=0.2
+InpAsiaConfirmBars=8
+InpAsiaAtrStopMult=1.5
+InpUseSessionFilter=true
+InpUseWeekdayFilter=false
+InpOverlapStartGmtHour=12
+InpOverlapEndGmtHour=16
+InpMondayStartGmtHour=8
+InpFridayStopGmtHour=18
+InpGmtOffsetWinter=2
+InpGmtOffsetSummer=3
+InpUseSpreadFilter=false
+InpMaxSpreadPoints=150
+InpRiskPctDipBuy=6.0
+InpRiskPctOverlap=9.0
+InpRiskPctAsia=1.0
+InpMaxClusterRiskPct=22.0
+InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
+InpClusterCountForeign=true
+InpClusterNoSLBlocks=true
+InpMaxRiskPctPerTrade=20.0
+InpMaxLotsPerTicket=20.0
+InpFrictionSLMult=15.0
+InpSlippageBufferPts=20.0
+InpMaxDailyLossPct=3.0
+InpMaxTotalDDPct=100.0
+InpPartialPct=50.0
+InpUseNewsFilter=false
+InpNewsBlackoutMinBefore=5
+InpNewsBlackoutMinAfter=5
+InpNewsCsvPath=news_schedule.csv
+InpMagicBase=770000
+InpLogDecisions=true
+InpEnableEmailNotify=false
