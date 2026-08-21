@@ -161,6 +161,7 @@ input int    InpAsiaBoxEndHour            = 8;     // Asia-Box Ende (GMT-Stunde)
 input double InpAsiaRetestToleranceAtrMult= 0.2;   // Retest-Toleranz (ATR-M15-Vielfaches)
 input int    InpAsiaConfirmBars           = 8;     // Max. M15-Bars fuer Retest-Bestaetigung
 input double InpAsiaAtrStopMult           = 1.5;   // Stop-Kappung (ATR-M15-Multiplikator)
+input int    InpAsiaForceCloseGmtHour     = -1;    // Zwangsschluss vor Tagesende (GMT-Stunde), -1 = aus (kein Overnight-Limit)
 
 input group "=== Strategie London-Breakout ==="
 input bool   InpUseLondonModule           = false; // London-Range-Breakout (M15) - Default false (Hazard H14), Tier 3/neu
@@ -654,6 +655,7 @@ int OnInit(void)
                                  g_symbolResolver.VolumeMin(), g_symbolResolver.VolumeStep(),
                                  g_symbolResolver.StopsLevelPoints(),
                                  PERIOD_M15);
+   g_slots[4].forceCloseGmtHour = InpAsiaForceCloseGmtHour;
 
    //--- 6f. London-Breakout-Slot (Tier 3, neu/unvalidiert - eigener Slot, komplett unabhaengig
    //---     von DipBuy/Overlap/Asia: echter Broker-TP, kein Trailing/Teilgewinn, Zwangsschluss
