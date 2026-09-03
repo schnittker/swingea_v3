@@ -1,0 +1,66 @@
+//@version=6
+indicator("Liquidity Sweep - SL/Entry (Pips)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// ---------------------------------------------------------------------------
+// Idee (analog zur Sweep/Rejection-Logik aus liquidity_sweep_backtest/strategy.py):
+// - "Sweep-Kerze" = Kerze, deren Docht ein N-Bar-Hoch/Tief durchsticht.
+// - "Bestätigungskerze" = die direkt folgende Kerze mit gegensätzlicher Farbe
+//   (Rejection). Entry = Körperkante der Bestätigungskerze, SL = Docht-Extrem
+//   der Sweep-Kerze.
+// - Auswertung nur auf bestätigten (geschlossenen) Bars -> kein Repainting.
+// ---------------------------------------------------------------------------
+
+lookback = input.int(10, "Lookback Bars (Sweep-Level)", minval = 3)
+pipSize  = input.float(0.1, "Pip-Größe (Preiseinheiten je Pip)", step = 0.01,
+     tooltip = "XAUUSD: üblicherweise 0.1 (1 Pip = 10 Punkte = $0.10), je nach Broker ggf. 0.01")
+rr       = input.float(1.0, "TP Risk:Reward", minval = 0.1, step = 0.1)
+showTP   = input.bool(true, "TP-Linie anzeigen")
+lineBars = input.int(20, "Linienlänge nach rechts (Bars)", minval = 1)
+
+// Referenzbereich VOR der Sweep-Kerze (bar[1])
+refLow  = ta.lowest(low[2],  lookback)
+refHigh = ta.highest(high[2], lookback)
+
+sweepLow  = low[1]  < refLow    // Sweep-Kerze hat mit dem Docht ein N-Bar-Low unterboten
+sweepHigh = high[1] > refHigh   // Sweep-Kerze hat mit dem Docht ein N-Bar-High überboten
+
+bullConfirm = sweepLow  and close > open   // aktuelle (Bestätigungs-)Kerze bullisch
+bearConfirm = sweepHigh and close < open   // aktuelle (Bestätigungs-)Kerze bärisch
+
+longSetup  = bullConfirm and barstate.isconfirmed
+shortSetup = bearConfirm and barstate.isconfirmed
+
+if longSetup
+    slPrice    = low[1]
+    entryPrice = math.max(open, close)
+    dist       = entryPrice - slPrice
+    pips       = math.round(dist / pipSize * 10) / 10
+    tpPrice    = entryPrice + rr * dist
+
+    line.new(bar_index[1], slPrice,    bar_index + lineBars, slPrice,    color = color.red,   style = line.style_dashed, width = 1)
+    line.new(bar_index,    entryPrice, bar_index + lineBars, entryPrice, color = color.blue,  style = line.style_solid,  width = 1)
+    if showTP
+        line.new(bar_index, tpPrice, bar_index + lineBars, tpPrice, color = color.green, style = line.style_dotted, width = 1)
+
+    label.new(bar_index[1], slPrice,
+         text = "SL " + str.tostring(pips) + " Pips\n" + str.tostring(slPrice, format.mintick),
+         style = label.style_label_up, color = color.red, textcolor = color.white, size = size.small)
+
+if shortSetup
+    slPrice    = high[1]
+    entryPrice = math.min(open, close)
+    dist       = slPrice - entryPrice
+    pips       = math.round(dist / pipSize * 10) / 10
+    tpPrice    = entryPrice - rr * dist
+
+    line.new(bar_index[1], slPrice,    bar_index + lineBars, slPrice,    color = color.red,   style = line.style_dashed, width = 1)
+    line.new(bar_index,    entryPrice, bar_index + lineBars, entryPrice, color = color.blue,  style = line.style_solid,  width = 1)
+    if showTP
+        line.new(bar_index, tpPrice, bar_index + lineBars, tpPrice, color = color.green, style = line.style_dotted, width = 1)
+
+    label.new(bar_index[1], slPrice,
+         text = "SL " + str.tostring(pips) + " Pips\n" + str.tostring(slPrice, format.mintick),
+         style = label.style_label_down, color = color.red, textcolor = color.white, size = size.small)
+
+alertcondition(longSetup,  title = "Liquidity Sweep Long",  message = "Long Sweep Setup: SL am Docht-Low, Entry über Körper der Bestätigungskerze")
+alertcondition(shortSetup, title = "Liquidity Sweep Short", message = "Short Sweep Setup: SL am Docht-High, Entry unter Körper der Bestätigungskerze")

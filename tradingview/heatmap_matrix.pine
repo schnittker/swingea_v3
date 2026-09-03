@@ -1,0 +1,220 @@
+//@version=5
+indicator("🧑‍💻 Heatmap Matrix", overlay=false)
+
+showTable = input.bool(true, "📊 Heatmap-Tabelle anzeigen")
+
+// === Sichtbare Timeframes ===
+// Reihenfolge/Index ist fix: 0=5M, 1=15M, 2=30M, 3=1H, 4=4H, 5=1D, 6=1W
+show5m = input.bool(false, "5M anzeigen", group="Sichtbare Timeframes")
+show15m = input.bool(true, "15M anzeigen", group="Sichtbare Timeframes")
+show30m = input.bool(false, "30M anzeigen", group="Sichtbare Timeframes")
+show1h = input.bool(true, "1H anzeigen", group="Sichtbare Timeframes")
+show4h = input.bool(true, "4H anzeigen", group="Sichtbare Timeframes")
+show1d = input.bool(false, "1D anzeigen", group="Sichtbare Timeframes")
+show1w = input.bool(false, "1W anzeigen", group="Sichtbare Timeframes")
+
+// === Sichtbarkeit der einzelnen Zeilen ===
+showTrendRow = input.bool(true, "Trend anzeigen", group="Sichtbare Reihen")
+showStochRow = input.bool(true, "Stoch RSI anzeigen", group="Sichtbare Reihen")
+showEma20Row = input.bool(true, "EMA 20 anzeigen", group="Sichtbare Reihen")
+showEma50Row = input.bool(true, "EMA 50 anzeigen", group="Sichtbare Reihen")
+showEma100Row = input.bool(true, "EMA 100 anzeigen", group="Sichtbare Reihen")
+showEma200Row = input.bool(true, "EMA 200 anzeigen", group="Sichtbare Reihen")
+showRsiRow = input.bool(true, "RSI anzeigen", group="Sichtbare Reihen")
+showMacdRow = input.bool(true, "MACD anzeigen", group="Sichtbare Reihen")
+showAtrRow = input.bool(true, "ATR anzeigen", group="Sichtbare Reihen")
+
+// Neutral-Zone fuer den Trendvergleich, als % des slow-EMA-Werts.
+// Alte Defaults (1% / 1.5%) waren fuer viele Instrumente viel zu breit,
+// wodurch die Trend-Zeile praktisch dauerhaft "neutral" (weiss) blieb.
+neutralThresholdPct = input.float(0.1, "Neutral-Zone (%)", step=0.05, minval=0) / 100
+strongThresholdPct = input.float(0.5, "Starker Trend ab (%)", step=0.1, minval=0) / 100
+
+// === Trend-EMA-Perioden pro Timeframe ===
+// Niedrige TFs (5M-4H): schnelle EMA 20/50 fuer zeitnahe Signale.
+// Hohe TFs (1D/1W): klassischer Golden/Death-Cross EMA 50/200 als Makro-Regimefilter.
+trendFastPeriod_5m = 20
+trendSlowPeriod_5m = 50
+trendFastPeriod_15m = 20
+trendSlowPeriod_15m = 50
+trendFastPeriod_30m = 20
+trendSlowPeriod_30m = 50
+trendFastPeriod_1h = 20
+trendSlowPeriod_1h = 50
+trendFastPeriod_4h = 20
+trendSlowPeriod_4h = 50
+trendFastPeriod_1d = 50
+trendSlowPeriod_1d = 200
+trendFastPeriod_1w = 50
+trendSlowPeriod_1w = 200
+
+// === Farb- & Bewertungsfunktionen ===
+getTrendLabel(emaFast, emaSlow) =>
+    diff = math.abs(emaFast - emaSlow) / emaSlow
+    diff < neutralThresholdPct ? "⚪" : emaFast > emaSlow ? "🟢" : "🔴"
+
+getTrendHeatmapColor(emaFast, emaSlow) =>
+    isBull = emaFast > emaSlow
+    diff = math.abs(emaFast - emaSlow) / emaSlow
+    neutral = diff < neutralThresholdPct
+    strong = diff > strongThresholdPct
+    color.new(neutral ? color.gray : isBull ? color.green : color.red,
+              neutral ? 85 : strong ? 0 : 50)
+
+getEmaColor(price, ema) =>
+    math.abs(price - ema) > 0.001 * ema ? (price > ema ? color.new(color.green, 85) : color.new(color.red, 85)) : color.new(color.gray, 85)
+
+color_for_k(k) =>
+    k > 80 ? color.new(color.red, 85) : k < 20 ? color.new(color.green, 85) : color.new(color.gray, 85)
+
+color_for_rsi(r) =>
+    r > 70 ? color.new(color.red, 85) : r < 30 ? color.new(color.green, 85) : color.new(color.gray, 85)
+
+// === MACD-Label/Farbe aus Line/Signal ableiten (kein eigener security-Call) ===
+f_macd_label(macdLine, macdSignal) =>
+    dir = macdLine > macdSignal ? "🟢 Long" : macdLine < macdSignal ? "🔴 Short" : "⚪ Neutral"
+    col = macdLine > macdSignal ? color.new(color.green, 85) : macdLine < macdSignal ? color.new(color.red, 85) : color.new(color.gray, 85)
+    [dir, col]
+
+// === Alle Kennzahlen einer Timeframe in einem einzigen request.security()-Aufruf bündeln ===
+// (Pine-Limit: max. 40 security-Calls insgesamt - bei 7 TFs bleibt so nur 1 Call pro TF statt ~10)
+f_tf_data(fastLen, slowLen) =>
+    [macdLine, macdSignal, _] = ta.macd(close, 12, 26, 9)
+    emaFast = ta.ema(close, fastLen)
+    emaSlow = ta.ema(close, slowLen)
+    ema100 = ta.ema(close, 100)
+    ema200 = ta.ema(close, 200)
+    rsiVal = ta.rsi(close, 14)
+    stochRsi = ta.sma(ta.stoch(rsiVal, rsiVal, rsiVal, 14), 3)
+    atrVal = ta.atr(14)
+    [emaFast, emaSlow, ema100, ema200, rsiVal, stochRsi, macdLine, macdSignal, atrVal]
+
+// === Zeitfenster: 5M, 15M, 30M, 1H, 4H, 1D, 1W
+[emaFast_5m, emaSlow_5m, ema100_5m, ema200_5m, rsi_5m, stoch_5m, macdLine_5m, macdSignal_5m, atr_5m] = request.security(syminfo.tickerid, "5", f_tf_data(trendFastPeriod_5m, trendSlowPeriod_5m))
+[macdDir_5m, macdColor_5m] = f_macd_label(macdLine_5m, macdSignal_5m)
+
+[emaFast_15m, emaSlow_15m, ema100_15m, ema200_15m, rsi_15m, stoch_15m, macdLine_15m, macdSignal_15m, atr_15m] = request.security(syminfo.tickerid, "15", f_tf_data(trendFastPeriod_15m, trendSlowPeriod_15m))
+[macdDir_15m, macdColor_15m] = f_macd_label(macdLine_15m, macdSignal_15m)
+
+[emaFast_30m, emaSlow_30m, ema100_30m, ema200_30m, rsi_30m, stoch_30m, macdLine_30m, macdSignal_30m, atr_30m] = request.security(syminfo.tickerid, "30", f_tf_data(trendFastPeriod_30m, trendSlowPeriod_30m))
+[macdDir_30m, macdColor_30m] = f_macd_label(macdLine_30m, macdSignal_30m)
+
+[emaFast_1h, emaSlow_1h, ema100_1h, ema200_1h, rsi_1h, stoch_1h, macdLine_1h, macdSignal_1h, atr_1h] = request.security(syminfo.tickerid, "60", f_tf_data(trendFastPeriod_1h, trendSlowPeriod_1h))
+[macdDir_1h, macdColor_1h] = f_macd_label(macdLine_1h, macdSignal_1h)
+
+[emaFast_4h, emaSlow_4h, ema100_4h, ema200_4h, rsi_4h, stoch_4h, macdLine_4h, macdSignal_4h, atr_4h] = request.security(syminfo.tickerid, "240", f_tf_data(trendFastPeriod_4h, trendSlowPeriod_4h))
+[macdDir_4h, macdColor_4h] = f_macd_label(macdLine_4h, macdSignal_4h)
+
+[emaFast_1d, emaSlow_1d, ema100_1d, ema200_1d, rsi_1d, stoch_1d, macdLine_1d, macdSignal_1d, atr_1d] = request.security(syminfo.tickerid, "D", f_tf_data(trendFastPeriod_1d, trendSlowPeriod_1d))
+[macdDir_1d, macdColor_1d] = f_macd_label(macdLine_1d, macdSignal_1d)
+
+[emaFast_1w, emaSlow_1w, ema100_1w, ema200_1w, rsi_1w, stoch_1w, macdLine_1w, macdSignal_1w, atr_1w] = request.security(syminfo.tickerid, "W", f_tf_data(trendFastPeriod_1w, trendSlowPeriod_1w))
+[macdDir_1w, macdColor_1w] = f_macd_label(macdLine_1w, macdSignal_1w)
+
+// === Arraystruktur für Schleifen (Reihenfolge: 5M, 15M, 30M, 1H, 4H, 1D, 1W) ===
+tfLabelAll = array.from("5M", "15M", "30M", "1H", "4H", "1D", "1W")
+enabledAll = array.from(show5m, show15m, show30m, show1h, show4h, show1d, show1w)
+emaFastAll = array.from(emaFast_5m, emaFast_15m, emaFast_30m, emaFast_1h, emaFast_4h, emaFast_1d, emaFast_1w)
+emaSlowAll = array.from(emaSlow_5m, emaSlow_15m, emaSlow_30m, emaSlow_1h, emaSlow_4h, emaSlow_1d, emaSlow_1w)
+ema100All = array.from(ema100_5m, ema100_15m, ema100_30m, ema100_1h, ema100_4h, ema100_1d, ema100_1w)
+ema200All = array.from(ema200_5m, ema200_15m, ema200_30m, ema200_1h, ema200_4h, ema200_1d, ema200_1w)
+stochAll = array.from(stoch_5m, stoch_15m, stoch_30m, stoch_1h, stoch_4h, stoch_1d, stoch_1w)
+rsiAll = array.from(rsi_5m, rsi_15m, rsi_30m, rsi_1h, rsi_4h, rsi_1d, rsi_1w)
+atrAll = array.from(atr_5m, atr_15m, atr_30m, atr_1h, atr_4h, atr_1d, atr_1w)
+macdDirAll = array.from(macdDir_5m, macdDir_15m, macdDir_30m, macdDir_1h, macdDir_4h, macdDir_1d, macdDir_1w)
+macdColorAll = array.from(macdColor_5m, macdColor_15m, macdColor_30m, macdColor_1h, macdColor_4h, macdColor_1d, macdColor_1w)
+
+// === Trend & Farbe vorbereiten (für alle 7 Timeframes) ===
+trendAll = array.new_string()
+trendHeatColorAll = array.new_color()
+for i = 0 to 6
+    array.push(trendAll, getTrendLabel(array.get(emaFastAll, i), array.get(emaSlowAll, i)))
+    array.push(trendHeatColorAll, getTrendHeatmapColor(array.get(emaFastAll, i), array.get(emaSlowAll, i)))
+
+// === Sichtbare Timeframe-Indizes einsammeln ===
+visibleIdx = array.new_int()
+for i = 0 to 6
+    if array.get(enabledAll, i)
+        array.push(visibleIdx, i)
+visibleCount = array.size(visibleIdx)
+
+// === Tabelle anzeigen ===
+var table t = table.new(position.top_right, 8, 10, border_width=1)
+
+if showTable
+    table.cell(t, 0, 0, "Zeiteinheit ➝", text_color=color.black, text_size=size.tiny, bgcolor=color.new(color.gray, 90))
+    for c = 0 to visibleCount - 1
+        idx = array.get(visibleIdx, c)
+        table.cell(t, c + 1, 0, array.get(tfLabelAll, idx), text_color=color.black, text_size=size.tiny)
+
+    row = 1
+
+    if showTrendRow
+        table.cell(t, 0, row, "Trend (EMA)", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            table.cell(t, c + 1, row, array.get(trendAll, idx), text_color=color.black, bgcolor=array.get(trendHeatColorAll, idx), text_size=size.tiny)
+        row := row + 1
+
+    if showStochRow
+        table.cell(t, 0, row, "Stoch RSI", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(stochAll, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=color_for_k(val), text_size=size.tiny)
+        row := row + 1
+
+    if showEma20Row
+        table.cell(t, 0, row, "EMA 20", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(emaFastAll, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=getEmaColor(close, val), text_size=size.tiny)
+        row := row + 1
+
+    if showEma50Row
+        table.cell(t, 0, row, "EMA 50", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(emaSlowAll, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=getEmaColor(close, val), text_size=size.tiny)
+        row := row + 1
+
+    if showEma100Row
+        table.cell(t, 0, row, "EMA 100", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(ema100All, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=getEmaColor(close, val), text_size=size.tiny)
+        row := row + 1
+
+    if showEma200Row
+        table.cell(t, 0, row, "EMA200", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(ema200All, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=getEmaColor(close, val), text_size=size.tiny)
+        row := row + 1
+
+    if showRsiRow
+        table.cell(t, 0, row, "RSI", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(rsiAll, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, bgcolor=color_for_rsi(val), text_size=size.tiny)
+        row := row + 1
+
+    if showMacdRow
+        table.cell(t, 0, row, "MACD", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            table.cell(t, c + 1, row, array.get(macdDirAll, idx), text_color=color.black, bgcolor=array.get(macdColorAll, idx), text_size=size.tiny)
+        row := row + 1
+
+    if showAtrRow
+        table.cell(t, 0, row, "ATR", text_color=color.black, text_size=size.tiny)
+        for c = 0 to visibleCount - 1
+            idx = array.get(visibleIdx, c)
+            val = array.get(atrAll, idx)
+            table.cell(t, c + 1, row, str.tostring(val, "#.##"), text_color=color.black, text_size=size.tiny)
+        row := row + 1

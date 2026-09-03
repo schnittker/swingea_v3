@@ -1,0 +1,111 @@
+//@version=6
+indicator("Position Size Calculator", overlay = true)
+
+// ---------------------------------------------------------------------------
+// Idee: input.price() erzeugt draggable Preis-Linien direkt im Chart
+// (Entry/SL) - wie beim Long/Short Position Tool, aber scriptbar. Aus den
+// gezogenen Preisen berechnet das Script live Lot-Size/Einheiten nach
+// Risiko-% des Kontos (analog zu position_size() in
+// liquidity_sweep_backtest/strategy.py). TP wird automatisch im gleichen
+// Abstand wie SL (1:1, symmetrisch zum Entry) berechnet und gezeichnet.
+// ---------------------------------------------------------------------------
+
+// defval muss ein konstanter Wert sein (Pine erlaubt hier kein "close").
+// Mit confirm = true wirst du beim Einfügen des Scripts einmal gebeten, die
+// beiden Linien direkt im Chart zu platzieren; danach frei verschiebbar.
+// TP wird NICHT manuell gezogen, sondern immer im gleichen Abstand wie SL
+// (symmetrisch zum Entry) automatisch berechnet.
+entryPrice = input.price(defval = 0.0, title = "Entry",     confirm = true)
+slPrice    = input.price(defval = 0.0, title = "Stop Loss", confirm = true)
+
+// TP als editierbares Feld in den Settings: bei aktivem "Auto-TP" wird der
+// eingetragene Wert ignoriert und stattdessen automatisch passend zum
+// SL-Abstand berechnet (1:1, symmetrisch zum Entry).
+useAutoTP = input.bool(true, "TP automatisch berechnen (1:1 zu SL)")
+tpManual  = input.float(0.0, "Take Profit (manuell, nur bei Auto-TP aus)")
+
+accountBalance = input.float(100000, "Kontostand", minval = 0)
+riskPct        = input.float(0.25,   "Risiko % pro Trade", minval = 0.01, step = 0.01)
+contractSize   = input.float(100,   "Kontraktgröße (Einheiten je Lot)", minval = 0.00001,
+     tooltip = "z.B. 100000 für Standard-Forex-Lot, 100 für Gold-CFD (Unzen je Lot) - an deinen Broker anpassen")
+
+direction = entryPrice >= slPrice ? "LONG" : "SHORT"
+
+distPrice = math.abs(entryPrice - slPrice)
+
+riskAmount = accountBalance * riskPct / 100
+lots       = distPrice != 0 ? riskAmount / (distPrice * contractSize) : na
+
+// TP: bei Auto-TP immer im gleichen Preisabstand wie SL (1:1, symmetrisch
+// zum Entry), sonst der manuell in den Settings eingetragene Wert.
+tpAuto  = direction == "LONG" ? entryPrice + distPrice : entryPrice - distPrice
+tpPrice = useAutoTP ? tpAuto : tpManual
+
+// Aktuelles Plus/Minus (unrealisiert) auf Basis der Lot-Size und des
+// aktuellen Kurses.
+units      = na(lots) ? na : lots * contractSize
+pnlPrice   = direction == "LONG" ? close - entryPrice : entryPrice - close
+pnlAmount  = na(units) ? na : pnlPrice * units
+pnlColor   = na(pnlAmount) ? color.gray : (pnlAmount >= 0 ? color.green : color.red)
+
+// Alle Werte (SL, Entry, TP, P&L, Lot-Size) als EIN gemeinsames Label direkt
+// untereinander (per "\n" gestapelt), statt einzeln an jeder Linie.
+var label infoLabel = na
+
+// Kleiner vertikaler Versatz nach oben, damit der Block leicht über der
+// Entry-Linie schwebt statt direkt darauf zu liegen.
+labelYOffset = distPrice * 0.15
+
+infoText = "SL: " + str.tostring(slPrice, format.mintick) + "\n" +
+     "Entry: " + str.tostring(entryPrice, format.mintick) + "\n" +
+     "TP: " + str.tostring(tpPrice, format.mintick) + "\n" +
+     "P&L: " + (na(pnlAmount) ? "n/a" : str.tostring(pnlAmount, "#.##") + " USD") + "\n" +
+     "Lot-Size: " + (na(lots) ? "n/a" : str.tostring(lots, "#.####"))
+
+if barstate.islast
+    label.delete(infoLabel)
+    infoLabel := label.new(bar_index + 12, entryPrice + labelYOffset,
+         text  = infoText,
+         style = label.style_none, textcolor = color.black, size = size.normal,
+         textalign = text.align_left, text_font_family = font.family_default,
+         text_formatting = text.format_bold)
+
+// farbige Linien zusätzlich zu den (dünnen) input.price-Linien, zur besseren Sichtbarkeit
+var line slLine    = na
+var line entryLine = na
+var line tpLine    = na
+
+if barstate.islast
+    line.delete(slLine)
+    line.delete(entryLine)
+    line.delete(tpLine)
+    slLine    := line.new(bar_index - 50, slPrice,    bar_index + 20, slPrice,    color = color.red,   style = line.style_solid, width = 3)
+    entryLine := line.new(bar_index - 50, entryPrice, bar_index + 20, entryPrice, color = color.black, style = line.style_solid, width = 3)
+    tpLine    := line.new(bar_index - 50, tpPrice,    bar_index + 20, tpPrice,    color = color.green, style = line.style_solid, width = 3)
+
+// Hintergrundzonen: Entry->TP leicht grün, Entry->SL leicht rot
+var box tpZone = na
+var box slZone = na
+
+if barstate.islast
+    box.delete(tpZone)
+    box.delete(slZone)
+    tpZone := box.new(bar_index - 50, math.max(entryPrice, tpPrice), bar_index + 20, math.min(entryPrice, tpPrice),
+         border_color = color.new(color.green, 100), bgcolor = color.new(color.green, 85))
+    slZone := box.new(bar_index - 50, math.max(entryPrice, slPrice), bar_index + 20, math.min(entryPrice, slPrice),
+         border_color = color.new(color.red, 100), bgcolor = color.new(color.red, 85))
+
+// ---------------------------------------------------------------------------
+// Alerts: feuern einmalig, sobald der Kursbereich (High/Low) die SL- bzw.
+// TP-Linie erstmals berührt (nicht bei jedem weiteren Bar dahinter erneut).
+// ---------------------------------------------------------------------------
+slHit = direction == "LONG" ?
+     (low  <= slPrice and low[1]  > slPrice) :
+     (high >= slPrice and high[1] < slPrice)
+
+tpHit = direction == "LONG" ?
+     (high >= tpPrice and high[1] < tpPrice) :
+     (low  <= tpPrice and low[1]  > tpPrice)
+
+alertcondition(slHit, title = "Stop Loss erreicht", message = "SL erreicht bei {{close}}")
+alertcondition(tpHit, title = "Take Profit erreicht", message = "TP erreicht bei {{close}}")

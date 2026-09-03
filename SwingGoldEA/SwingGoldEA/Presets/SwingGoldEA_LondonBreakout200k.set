@@ -1,0 +1,67 @@
+; SwingGoldEA - London-Range-Breakout (M15), dedizierte 200k$-Prop-Firm-Challenge
+; (10% Ziel, 3% Tages-Verlust, 10% Max-Verlust, unbegrenzte Laufzeit, "Bester-Tag"-Regel 50%,
+; 90% Split, 999 EUR Gebuehr). Stand 2026-08-20, NEU/UNVALIDIERT (Tier 3) - vor Go-Live
+; zwingend 100-200 Trades im Strategy Tester pruefen (siehe Verifikations-Schritte im Plan).
+;
+; Alle anderen Module bewusst deaktiviert - dieses Preset fahrt AUSSCHLIESSLICH
+; London-Breakout auf einem eigenen Slot/eigener Magic-Nummer.
+; InpUseNewsFilter=true: Challenge-Vorgabe "keine News" (User-bestaetigt).
+; "Kein Wochenende" ist strukturell bereits durch "kein Overnight" (Force-Close) +
+; fehlenden Forex-Tick-Feed am Wochenende gegeben, kein zusaetzlicher Input nötig.
+; InpMaxDailyLossPct=3.0: Challenge-Vorgabe (3% Tages-Verlust-Limit).
+; InpMaxTotalDDPct=100.0 bleibt bewusst deaktiviert - siehe MEMORY.md "Gesamt-Kill-Switch"-
+; Erkenntnis: das Guard-Design (permanentes Veto, kein Peak-Reset) zerstoert die Strategie bei
+; jedem Schwellwert unterhalb der normalen Drawdown-Schwankung. Schutz vor dem echten 10%-Limit
+; laeuft ausschliesslich ueber das weiche Risk-Scaling (GetRiskScale, 2%/4%-Throttling).
+;
+InpUseDipBuyModule=false
+InpUseOverlapModule=false
+InpUseAsiaModule=false
+InpAsiaRequireRetest=true
+InpAsiaBoxStartHour=0
+InpAsiaBoxEndHour=8
+InpAsiaRetestToleranceAtrMult=0.2
+InpAsiaConfirmBars=8
+InpAsiaAtrStopMult=1.5
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=0.25
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.0
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
+InpUseSessionFilter=true
+InpUseWeekdayFilter=false
+InpOverlapStartGmtHour=12
+InpOverlapEndGmtHour=16
+InpMondayStartGmtHour=8
+InpFridayStopGmtHour=18
+InpGmtOffsetWinter=2
+InpGmtOffsetSummer=3
+InpUseSpreadFilter=false
+InpMaxSpreadPoints=150
+InpRiskPctDipBuy=1.0
+InpRiskPctOverlap=1.0
+InpRiskPctAsia=1.0
+InpMaxClusterRiskPct=3.0
+InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
+InpClusterCountForeign=true
+InpClusterNoSLBlocks=true
+InpMaxRiskPctPerTrade=2.0
+InpMaxLotsPerTicket=20.0
+InpFrictionSLMult=15.0
+InpSlippageBufferPts=20.0
+InpMaxDailyLossPct=3.0
+InpMaxTotalDDPct=100.0
+InpPartialPct=50.0
+InpUseNewsFilter=true
+InpNewsBlackoutMinBefore=5
+InpNewsBlackoutMinAfter=5
+InpNewsCsvPath=news_schedule.csv
+InpMagicBase=770000
+InpLogDecisions=true
+InpEnableEmailNotify=false
