@@ -86,9 +86,9 @@ public:
    //+------------------------------------------------------------------+
    //| Gibt den Risiko-Skalierungsfaktor basierend auf dem laufenden   |
    //| Gesamt-DD vom Peak zurueck:                                     |
-   //|   DD <  2% -> 1.00 (volles Risiko)                              |
-   //|   DD <  4% -> 0.50 (halbiertes Risiko)                          |
-   //|   DD >= 4% -> 0.25 (stark reduziertes Risiko)                   |
+   //|   DD <  1.5% -> 1.00 (volles Risiko)                            |
+   //|   DD <  3.0% -> 0.50 (halbiertes Risiko)                        |
+   //|   DD >= 3.0% -> 0.25 (stark reduziertes Risiko)                 |
    //+------------------------------------------------------------------+
    double            GetRiskScale(void) const
      {
@@ -103,8 +103,8 @@ public:
       double equity    = AccountInfoDouble(ACCOUNT_EQUITY);
       double ddPct     = (peakEquity - equity) / peakEquity * 100.0;
 
-      if(ddPct < 2.0) return 1.00;
-      if(ddPct < 4.0) return 0.50;
+      if(ddPct < 1.5) return 1.00;
+      if(ddPct < 3.0) return 0.50;
       return 0.25;
      }
 
