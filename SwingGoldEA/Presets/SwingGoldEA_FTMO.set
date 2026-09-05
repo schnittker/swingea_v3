@@ -1,0 +1,88 @@
+; SwingGoldEA - FTMO Challenge/Verification Preset
+; Validiert: 500.000 USD, 1:30 Hebel, 2020.01.01-2026.09.03 (Every Tick, M15)
+; Ergebnis Einzeltest (Pass 356):
+;   Profit:       41,71% (208.525$) = ~0,52%/Monat
+;   Gesamt-DD:    6,99%  (Limit FTMO: 10%) -> +3,01 Pp Puffer
+;   Max. Tages-DD: 3,08% (Limit FTMO: 5%) -> +1,92 Pp Puffer
+;   Trades:       2.471 ueber 1.056 Handelstage
+;
+; FTMO-Regeln (Standard Challenge/Verification):
+;   Profit-Ziel:        10% (Challenge), 5% (Verification)
+;   Max. Tagesverlust:  5% des Kontostartstands
+;   Max. Gesamtverlust: 10% des Kontostartstands
+;   Min. Handelstage:   4 (Challenge + Verification)
+;
+; InpMaxDailyLossPct=4.5: konservative Annaeherung an FTMOs 5%-Tageslimit
+;   (0,5 Pp Puffer, da CDrawdownGuard vom Tagesstart-Equity misst - identisch
+;   zur FTMO-Messung "vom Tagesstart-Balance"). Bewaehrt per Backtest: max.
+;   3,08% Tages-DD naturlisch, Kill-Switch wird in normalem Betrieb nie ausgeloest.
+;
+; InpMaxTotalDDPct=100 (deaktiviert): Guard-Design (permanentes Veto, kein Peak-Reset)
+;   wuerde Strategie zerstoeren (Kontrolltest E8Challenge: -30k$ statt +176k$).
+;   Schutz vor 10%-Gesamt-Limit laeuft ueber das weiche Risk-Scaling (GetRiskScale,
+;   reduziert Risiko bei DD>1.5%/3.0%). Natuerliche DD liegt bei 6,99% - FTMOs
+;   10%-Limit wird im normalen Betrieb nicht erreicht.
+;
+; InpMaxRiskPctPerTrade=8.0: muss >= InpRiskPctDipBuy (6.0) sein, sonst greift
+;   der versteckte 2%-Default-Deckel (bekannte Falle, ea.md 8.4a). Auf 8.0 gesetzt
+;   um Spielraum zu haben ohne den Guard zu deaktivieren.
+;
+; ACHTUNG - vor Go-Live pruefen:
+;   - Broker-Symbol (XAUUSD oder XAUUSD.a etc.), GMT-Offset live vs. Backtest
+;   - InpGmtOffsetWinter/Summer an FTMO-Broker-Serverzeitzone anpassen
+;   - InpMaxLotsPerTicket=20 auf FTMO-Kontrakt-Limits pruefen
+;   - 4 Mindesthandelstage: EA handelt taeglich, kein Problem
+;   - Demo-Forward-Test min. 2-4 Wochen vor Live-Challenge empfohlen (ea.md 8.5)
+;
+InpUseDipBuyModule=true
+InpUseOverlapModule=true
+InpUseAsiaModule=false
+InpAsiaRequireRetest=true
+InpAsiaBoxStartHour=0
+InpAsiaBoxEndHour=8
+InpAsiaRetestToleranceAtrMult=0.2
+InpAsiaConfirmBars=8
+InpAsiaAtrStopMult=1.5
+InpAsiaForceCloseGmtHour=-1
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=0.75
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.0
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
+InpUseSessionFilter=true
+InpUseWeekdayFilter=false
+InpOverlapStartGmtHour=12
+InpOverlapEndGmtHour=16
+InpMondayStartGmtHour=8
+InpFridayStopGmtHour=18
+InpGmtOffsetWinter=2
+InpGmtOffsetSummer=3
+InpUseSpreadFilter=false
+InpMaxSpreadPoints=150
+InpRiskPctDipBuy=6.0
+InpRiskPctOverlap=1.25
+InpRiskPctAsia=1.0
+InpMaxClusterRiskPct=22.0
+InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
+InpClusterCountForeign=true
+InpClusterNoSLBlocks=true
+InpMaxRiskPctPerTrade=8.0
+InpMaxLotsPerTicket=20.0
+InpFrictionSLMult=15.0
+InpSlippageBufferPts=20.0
+InpMaxDailyLossPct=4.5
+InpMaxTotalDDPct=100.0
+InpPartialPct=50.0
+InpUseNewsFilter=false
+InpNewsBlackoutMinBefore=5
+InpNewsBlackoutMinAfter=5
+InpNewsCsvPath=news_schedule.csv
+InpMagicBase=770000
+InpLogDecisions=true
+InpEnableEmailNotify=false
