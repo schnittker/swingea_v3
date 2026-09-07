@@ -1,13 +1,13 @@
 ; SwingGoldEA - Eigengeld-Konto, Stand 2026-09-05
-; Basis: Optimierungslauf Eigengeld (DipBuy/Overlap/London, 4788 Passes, 3k EUR)
+; Basis: Optimierungslauf Eigengeld (DipBuy/Overlap/London, 4788 Passes, 3k EUR) - Pass 4643
 ; Bester Kandidat nach Profit-Factor (PF=1.431, stabilster >=1%/Mo):
-;   DipBuy=7.5 / Overlap=8.0 / London=0.25
-;   Profit: ~130% (1,627%/Mo) ueber 80 Monate, DD: 20,19%
+;   DipBuy=8.0 / Overlap=10.0 / London=3.00
+;   Profit: ~199% (2,488%/Mo) ueber 80 Monate, DD: 26,24%
 ;
-; Begruendung London=0.25 (nicht hoeher):
-;   London bei hohem Risiko (3.0) bringt mehr rohen Profit, aber PF sinkt auf ~1.17.
-;   London=0.25 kombiniert mit hohem DipBuy/Overlap ergibt PF=1.431 - deutlich
-;   robuster, weniger Overfitting-Risiko fuer den Live-Einsatz.
+; Begruendung London=3.00:
+;   Maximaler Profit bei DD<=30% (Nutzerziel). PF=1.167 akzeptabel bei
+;   explizit hohem Risikoappetit. Staerkste Gewinnkombination im 4788-Pass-Grid.
+
 ;
 ; InpMaxDailyLossPct=5.0: konservativer Tages-Kill-Switch fuer Eigengeld.
 ;   Natuerliche Tages-DD aus Backtest noch nicht geprueft - per
@@ -15,7 +15,7 @@
 ; InpMaxTotalDDPct=100 (deaktiviert): Guard-Design (permanentes Veto) wuerde
 ;   Strategie zerstoeren (s. ea.md / E8Challenge-Erfahrung). Schutz laeuft
 ;   ueber weiche Risk-Scaling (GetRiskScale 1.5%/3.0%).
-; InpMaxRiskPctPerTrade=10: muss >= DipBuy (7.5) sein - auf 10 gesetzt.
+; InpMaxRiskPctPerTrade=12: muss >= DipBuy (8.0) sein - auf 12 gesetzt.
 ;
 ; ACHTUNG - vor Go-Live:
 ;   - Tages-DD per analyze_daily_dd.py aus Einzeltest-Export validieren
@@ -34,7 +34,7 @@ InpAsiaConfirmBars=8
 InpAsiaAtrStopMult=1.5
 InpAsiaForceCloseGmtHour=-1
 InpUseLondonModule=true
-InpRiskPctLondonBreakout=0.25
+InpRiskPctLondonBreakout=3.00
 InpLondonRangeStartGmtHour=8
 InpLondonRangeEndGmtHour=13
 InpLondonEntryStartGmtHour=13
@@ -54,14 +54,14 @@ InpGmtOffsetWinter=2
 InpGmtOffsetSummer=3
 InpUseSpreadFilter=false
 InpMaxSpreadPoints=150
-InpRiskPctDipBuy=7.5
-InpRiskPctOverlap=8.0
+InpRiskPctDipBuy=8.0
+InpRiskPctOverlap=10.0
 InpRiskPctAsia=1.0
 InpMaxClusterRiskPct=50.0
 InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
 InpClusterCountForeign=true
 InpClusterNoSLBlocks=true
-InpMaxRiskPctPerTrade=10.0
+InpMaxRiskPctPerTrade=12.0
 InpMaxLotsPerTicket=20.0
 InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
