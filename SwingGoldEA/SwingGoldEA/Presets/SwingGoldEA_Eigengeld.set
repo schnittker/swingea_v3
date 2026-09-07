@@ -1,12 +1,27 @@
-; SwingGoldEA - Eigengeld-Konto (IG Markets), Stand 2026-08-20
-; Basis: Pass 67 (Risiko-%-Sensitivitaet DipBuy/Overlap, s. MEMORY.md Live-Deployment-Plan)
-; Getestet: 3.000 EUR Startkapital, 55,7% Profit, DD 17,11% (2020-2026, IS+OOS)
-; ACHTUNG - noch offene Punkte vor Go-Live (s. MEMORY.md):
-;   - Monatliche Einzahlungen (500 EUR/Monat) wurden NICHT im Backtest simuliert
-;   - IG-Markets-Broker-Spezifikation (Symbol-Suffix, Kontraktgroesse, GMT-Offset,
-;     Tick-Value/Hazard H15) noch nicht gegen diese Settings geprueft
-;   - InpMaxClusterRiskPct=22 ist bewusst locker (neutralisiert den Cluster-Guard fuer
-;     DipBuy+Overlap) - war so im validierten Grid, kein zusaetzlicher Sicherheitsdeckel
+; SwingGoldEA - Eigengeld-Konto, Stand 2026-09-05
+; Basis: Optimierungslauf Eigengeld (DipBuy/Overlap/London, 4788 Passes, 3k EUR)
+; Bester Kandidat nach Profit-Factor (PF=1.431, stabilster >=1%/Mo):
+;   DipBuy=7.5 / Overlap=8.0 / London=0.25
+;   Profit: ~130% (1,627%/Mo) ueber 80 Monate, DD: 20,19%
+;
+; Begruendung London=0.25 (nicht hoeher):
+;   London bei hohem Risiko (3.0) bringt mehr rohen Profit, aber PF sinkt auf ~1.17.
+;   London=0.25 kombiniert mit hohem DipBuy/Overlap ergibt PF=1.431 - deutlich
+;   robuster, weniger Overfitting-Risiko fuer den Live-Einsatz.
+;
+; InpMaxDailyLossPct=5.0: konservativer Tages-Kill-Switch fuer Eigengeld.
+;   Natuerliche Tages-DD aus Backtest noch nicht geprueft - per
+;   analyze_daily_dd.py nach Einzeltest validieren.
+; InpMaxTotalDDPct=100 (deaktiviert): Guard-Design (permanentes Veto) wuerde
+;   Strategie zerstoeren (s. ea.md / E8Challenge-Erfahrung). Schutz laeuft
+;   ueber weiche Risk-Scaling (GetRiskScale 1.5%/3.0%).
+; InpMaxRiskPctPerTrade=10: muss >= DipBuy (7.5) sein - auf 10 gesetzt.
+;
+; ACHTUNG - vor Go-Live:
+;   - Tages-DD per analyze_daily_dd.py aus Einzeltest-Export validieren
+;   - GMT-Offset an IG-Markets-Broker anpassen (InpGmtOffsetWinter/Summer)
+;   - Symbol-Name bei IG Markets pruefen (XAUUSD oder Variante)
+;   - Demo-Forward-Test min. 2-4 Wochen empfohlen (ea.md 8.5)
 ;
 InpUseDipBuyModule=true
 InpUseOverlapModule=true
@@ -17,6 +32,18 @@ InpAsiaBoxEndHour=8
 InpAsiaRetestToleranceAtrMult=0.2
 InpAsiaConfirmBars=8
 InpAsiaAtrStopMult=1.5
+InpAsiaForceCloseGmtHour=-1
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=0.25
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.0
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
 InpUseSessionFilter=true
 InpUseWeekdayFilter=false
 InpOverlapStartGmtHour=12
@@ -27,18 +54,18 @@ InpGmtOffsetWinter=2
 InpGmtOffsetSummer=3
 InpUseSpreadFilter=false
 InpMaxSpreadPoints=150
-InpRiskPctDipBuy=6.0
-InpRiskPctOverlap=9.0
+InpRiskPctDipBuy=7.5
+InpRiskPctOverlap=8.0
 InpRiskPctAsia=1.0
-InpMaxClusterRiskPct=22.0
+InpMaxClusterRiskPct=50.0
 InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
 InpClusterCountForeign=true
 InpClusterNoSLBlocks=true
-InpMaxRiskPctPerTrade=20.0
+InpMaxRiskPctPerTrade=10.0
 InpMaxLotsPerTicket=20.0
 InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
-InpMaxDailyLossPct=3.0
+InpMaxDailyLossPct=5.0
 InpMaxTotalDDPct=100.0
 InpPartialPct=50.0
 InpUseNewsFilter=false
