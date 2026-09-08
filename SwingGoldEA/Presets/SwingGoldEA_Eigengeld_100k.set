@@ -1,0 +1,76 @@
+; SwingGoldEA - Eigengeld-Konto 100.000+ EUR (ActiveTrades), Stand 2026-09-08
+; Basis: Eigengeld-10k-Preset (DipBuy=23/Overlap=1.5/London=3.0/AtrStopMult=1.25),
+; angepasst fuer groessere Kapitalgroessen.
+;
+; Anpassung gegenueber 10k-Preset:
+;   InpMaxLotsPerTicket: 20 -> 50
+;   Bei 10k: Lot-Cap greift selten, Margin Level 108.84%, Profit 2.107%/Mo
+;   Bei 100k mit Cap=20: Lot-Cap begrenzt Positionsgroessen, Profit sinkt auf
+;   1.969%/Mo, Margin Level 105.10% (suboptimal). Cap=50 erlaubt groessere
+;   Positionen entsprechend dem Kapital -> erwartet hoehere %-Rendite.
+;
+; NOCH NICHT VALIDIERT - Einzeltest mit Deposit=100.000 EUR ausfuehren und
+; Margin Level + Tages-DD per analyze_daily_dd.py pruefen.
+;
+; InpMaxDailyLossPct=8.0: wie 10k-Preset (natuerliche Tages-DD max. 7.90%).
+; InpMaxRiskPctPerTrade=25: unveraendert (>= DipBuy 23.0).
+;
+; ACHTUNG - vor Go-Live:
+;   - GMT-Offset an ActiveTrades-Broker anpassen
+;   - Symbol-Name pruefen (XAUUSD oder Variante)
+;   - Broker-Lot-Limit fuer XAUUSD pruefen (max. 50 Lots pro Ticket erlaubt?)
+;   - Demo-Forward-Test min. 2-4 Wochen empfohlen (ea.md 8.5)
+;   - Gilt fuer Kapital >= 50.000 EUR - unter 50k SwingGoldEA_Eigengeld.set verwenden
+;
+InpUseDipBuyModule=true
+InpUseOverlapModule=true
+InpUseAsiaModule=false
+InpAsiaRequireRetest=true
+InpAsiaBoxStartHour=0
+InpAsiaBoxEndHour=8
+InpAsiaRetestToleranceAtrMult=0.2
+InpAsiaConfirmBars=8
+InpAsiaAtrStopMult=1.5
+InpAsiaForceCloseGmtHour=-1
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=3.0
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.25
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
+InpUseSessionFilter=true
+InpUseWeekdayFilter=false
+InpOverlapStartGmtHour=12
+InpOverlapEndGmtHour=16
+InpMondayStartGmtHour=8
+InpFridayStopGmtHour=18
+InpGmtOffsetWinter=2
+InpGmtOffsetSummer=3
+InpUseSpreadFilter=false
+InpMaxSpreadPoints=150
+InpRiskPctDipBuy=23.0
+InpRiskPctOverlap=1.5
+InpRiskPctAsia=1.0
+InpMaxClusterRiskPct=50.0
+InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
+InpClusterCountForeign=true
+InpClusterNoSLBlocks=true
+InpMaxRiskPctPerTrade=25.0
+InpMaxLotsPerTicket=50.0
+InpFrictionSLMult=15.0
+InpSlippageBufferPts=20.0
+InpMaxDailyLossPct=8.0
+InpMaxTotalDDPct=100.0
+InpPartialPct=50.0
+InpUseNewsFilter=false
+InpNewsBlackoutMinBefore=5
+InpNewsBlackoutMinAfter=5
+InpNewsCsvPath=news_schedule.csv
+InpMagicBase=770000
+InpLogDecisions=true
+InpEnableEmailNotify=false
