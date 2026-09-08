@@ -14,6 +14,8 @@
 ;   Equity-DD:     16.01%  (Limit: 30%)
 ;   PF:            1.24  | Sharpe: 1.24  | Recovery: 3.35
 ;   Margin Level:  105.10% (5% Puffer - bei hoher Volatilitaet beobachten)
+;   Max. Tages-DD: 8.36% (1 Tag >=8% in 1060 Handelstagen: 2021-12-15)
+;   InpMaxDailyLossPct=8.0 loest an diesem einen Tag aus - akzeptabel
 ;
 ;
 ; InpMaxDailyLossPct=8.0: wie 10k-Preset (natuerliche Tages-DD max. 7.90%).
