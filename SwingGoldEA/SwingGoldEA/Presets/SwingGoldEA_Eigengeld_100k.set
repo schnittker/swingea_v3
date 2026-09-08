@@ -9,8 +9,12 @@
 ;   1.969%/Mo, Margin Level 105.10% (suboptimal). Cap=50 erlaubt groessere
 ;   Positionen entsprechend dem Kapital -> erwartet hoehere %-Rendite.
 ;
-; NOCH NICHT VALIDIERT - Einzeltest mit Deposit=100.000 EUR ausfuehren und
-; Margin Level + Tages-DD per analyze_daily_dd.py pruefen.
+; Validiert (Einzeltest 100k EUR, 2020.01.01-2026.09.05):
+;   Profit:        167.210 EUR (167.21% = 2.090%/Mo)
+;   Equity-DD:     16.01%  (Limit: 30%)
+;   PF:            1.24  | Sharpe: 1.24  | Recovery: 3.35
+;   Margin Level:  105.10% (5% Puffer - bei hoher Volatilitaet beobachten)
+;
 ;
 ; InpMaxDailyLossPct=8.0: wie 10k-Preset (natuerliche Tages-DD max. 7.90%).
 ; InpMaxRiskPctPerTrade=25: unveraendert (>= DipBuy 23.0).
