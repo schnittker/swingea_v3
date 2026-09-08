@@ -1,11 +1,8 @@
 ; SwingGoldEA - OPTIMIERUNGS-Set fuer Eigengeld (Inputs-Tab -> Laden),
 ; NICHT fuer Live/Deployment gedacht.
-; Ziel: Profit maximieren ohne hartes DD-Limit.
-; Ergebnisliste danach nach Equity-DD% <= 30% filtern, dann
-; Top-Kandidaten per analyze_daily_dd.py auf Tages-DD pruefen.
-;
-; Erkenntnisse aus FTMO-Optimierung: Asia=negativer Edge (deaktiviert),
-; London=positiver Edge (aktiv). DipBuy DD-effizienter als Overlap.
+; Fokus: InpLondonRRMult isoliert optimieren.
+; Alle anderen Parameter fixiert auf validiertem Best-Kandidat:
+;   DipBuy=23.0 / Overlap=1.5 / London=3.0
 ;
 ; Tester-Tab (manuell setzen):
 ;   Expert:      SwingGoldEA
@@ -13,9 +10,9 @@
 ;   Period:      M15
 ;   Zeitraum:    2020.01.01 - aktuell
 ;   Modellierung: 1-Minuten-OHLC
-;   Deposit:     3.000 EUR
+;   Deposit:     10.000 EUR
 ;   Leverage:    1:30
-;   Optimierung: Genetischer Algorithmus (1.144 Kombinationen)
+;   Optimierung: Langsamer kompletter Algorithmus (11 Passes)
 ;   Kriterium:   Balance Max.
 ;
 InpUseDipBuyModule=true
@@ -29,13 +26,13 @@ InpAsiaConfirmBars=8
 InpAsiaAtrStopMult=1.5
 InpAsiaForceCloseGmtHour=-1
 InpUseLondonModule=true
-InpRiskPctLondonBreakout=3.50000000||2.00000000||0.50000000||5.00000000||1
+InpRiskPctLondonBreakout=3.0
 InpLondonRangeStartGmtHour=8
 InpLondonRangeEndGmtHour=13
 InpLondonEntryStartGmtHour=13
 InpLondonEntryEndGmtHour=14
 InpLondonAtrStopMult=1.0
-InpLondonRRMult=2.0
+InpLondonRRMult=2.00000000||1.50000000||0.25000000||4.00000000||1
 InpLondonMinBreakoutAtrMult=0.0
 InpLondonDisableFriday=false
 InpLondonForceCloseGmtHour=21
@@ -49,14 +46,14 @@ InpGmtOffsetWinter=2
 InpGmtOffsetSummer=3
 InpUseSpreadFilter=false
 InpMaxSpreadPoints=150
-InpRiskPctDipBuy=25.00000000||20.00000000||0.50000000||30.00000000||1
-InpRiskPctOverlap=2.00000000||0.50000000||0.50000000||4.00000000||1
+InpRiskPctDipBuy=23.0
+InpRiskPctOverlap=1.5
 InpRiskPctAsia=1.0
 InpMaxClusterRiskPct=50.0
 InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
 InpClusterCountForeign=true
 InpClusterNoSLBlocks=true
-InpMaxRiskPctPerTrade=20.0
+InpMaxRiskPctPerTrade=25.0
 InpMaxLotsPerTicket=20.0
 InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
