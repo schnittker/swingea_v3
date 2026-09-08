@@ -1,0 +1,73 @@
+; SwingGoldEA - Eigengeld-Konto 5.000 EUR (ActiveTrades), Stand 2026-09-08
+; Optimiert fuer 5.000 EUR Startkapital (separate Optimierung, 462 Passes).
+; DipBuy=23 (10k-Preset) nicht deploybar bei 5k (DD 31%, Margin 103.6%).
+;
+; Validierter Kandidat (Einzeltest 5k EUR, 2020.01.01-2026.09.05):
+;   DipBuy=17.0 / Overlap=1.0 / London=3.0 / AtrStopMult=1.25
+;   Profit:        114.16% (1.427%/Mo) ueber 80 Monate
+;   Balance-DD:    24.33%  (Limit: 30%)
+;   Max. Tages-DD: 6.05%   (nur 2 Tage >=5% in 1033 Handelstagen)
+;   PF:            1.195
+;
+; InpMaxDailyLossPct=7.0: deckt schlechtesten Tag (6.05%) mit Puffer ab.
+; InpMaxRiskPctPerTrade=20: muss >= DipBuy (17.0) sein.
+; InpMaxLotsPerTicket=20: unveraendert.
+;
+; ACHTUNG - vor Go-Live:
+;   - GMT-Offset an ActiveTrades-Broker anpassen
+;   - Symbol-Name pruefen (XAUUSD oder Variante)
+;   - Demo-Forward-Test min. 2-4 Wochen empfohlen (ea.md 8.5)
+;   - Gilt NUR fuer 5k EUR Kapital - fuer 10k SwingGoldEA_Eigengeld.set verwenden
+;
+InpUseDipBuyModule=true
+InpUseOverlapModule=true
+InpUseAsiaModule=false
+InpAsiaRequireRetest=true
+InpAsiaBoxStartHour=0
+InpAsiaBoxEndHour=8
+InpAsiaRetestToleranceAtrMult=0.2
+InpAsiaConfirmBars=8
+InpAsiaAtrStopMult=1.5
+InpAsiaForceCloseGmtHour=-1
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=3.0
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.25
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
+InpUseSessionFilter=true
+InpUseWeekdayFilter=false
+InpOverlapStartGmtHour=12
+InpOverlapEndGmtHour=16
+InpMondayStartGmtHour=8
+InpFridayStopGmtHour=18
+InpGmtOffsetWinter=2
+InpGmtOffsetSummer=3
+InpUseSpreadFilter=false
+InpMaxSpreadPoints=150
+InpRiskPctDipBuy=17.0
+InpRiskPctOverlap=1.0
+InpRiskPctAsia=1.0
+InpMaxClusterRiskPct=50.0
+InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
+InpClusterCountForeign=true
+InpClusterNoSLBlocks=true
+InpMaxRiskPctPerTrade=20.0
+InpMaxLotsPerTicket=20.0
+InpFrictionSLMult=15.0
+InpSlippageBufferPts=20.0
+InpMaxDailyLossPct=7.0
+InpMaxTotalDDPct=100.0
+InpPartialPct=50.0
+InpUseNewsFilter=false
+InpNewsBlackoutMinBefore=5
+InpNewsBlackoutMinAfter=5
+InpNewsCsvPath=news_schedule.csv
+InpMagicBase=770000
+InpLogDecisions=true
+InpEnableEmailNotify=false
