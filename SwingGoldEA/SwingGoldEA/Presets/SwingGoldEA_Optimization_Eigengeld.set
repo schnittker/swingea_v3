@@ -1,8 +1,8 @@
 ; SwingGoldEA - OPTIMIERUNGS-Set fuer Eigengeld (Inputs-Tab -> Laden),
 ; NICHT fuer Live/Deployment gedacht.
-; Fokus: InpLondonRRMult isoliert optimieren.
-; Alle anderen Parameter fixiert auf validiertem Best-Kandidat:
-;   DipBuy=23.0 / Overlap=1.5 / London=3.0
+; Fokus: InpPartialPct isoliert optimieren (0-100%, Step 10).
+; RRMult=2.0 bestaetigt optimal (Ergebnis vorheriger Lauf). Alle anderen
+; Parameter fixiert auf DipBuy=23.0 / Overlap=1.5 / London=3.0.
 ;
 ; Tester-Tab (manuell setzen):
 ;   Expert:      SwingGoldEA
@@ -32,7 +32,7 @@ InpLondonRangeEndGmtHour=13
 InpLondonEntryStartGmtHour=13
 InpLondonEntryEndGmtHour=14
 InpLondonAtrStopMult=1.0
-InpLondonRRMult=2.00000000||1.50000000||0.25000000||4.00000000||1
+InpLondonRRMult=2.0
 InpLondonMinBreakoutAtrMult=0.0
 InpLondonDisableFriday=false
 InpLondonForceCloseGmtHour=21
@@ -59,7 +59,7 @@ InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
 InpMaxDailyLossPct=100.0
 InpMaxTotalDDPct=100.0
-InpPartialPct=50.0
+InpPartialPct=50.00000000||0.00000000||10.00000000||100.00000000||1
 InpUseNewsFilter=false
 InpNewsBlackoutMinBefore=5
 InpNewsBlackoutMinAfter=5
