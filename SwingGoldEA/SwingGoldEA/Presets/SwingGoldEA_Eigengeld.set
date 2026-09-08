@@ -1,26 +1,36 @@
-; SwingGoldEA - Eigengeld-Konto, Stand 2026-09-05
-; Basis: Optimierungslauf Eigengeld (DipBuy/Overlap/London, 4788 Passes, 3k EUR) - Pass 4643
-; Bester Kandidat nach Profit-Factor (PF=1.431, stabilster >=1%/Mo):
-;   DipBuy=8.0 / Overlap=10.0 / London=3.00
-;   Profit: ~199% (2,488%/Mo) ueber 80 Monate, DD: 26,24%
+; SwingGoldEA - Eigengeld-Konto (ActiveTrades), Stand 2026-09-08
+; Vollstaendig optimiert durch isolierte Parameter-Suche (5 Laeufe):
+;   InpLondonRRMult=2.0          -> bereits optimal (kein Gewinn durch Aenderung)
+;   InpPartialPct=50%            -> bereits optimal
+;   InpLondonDisableFriday=false -> Freitag aktiv lassen (Deaktivierung -20% Profit)
+;   InpLondonAtrStopMult=1.25    -> +14% Profit vs. 1.0 (war 1.849%/Mo, jetzt 2.107%)
+;   InpLondonMinBreakoutAtrMult=0.0 -> kein Filter optimal
 ;
-; Begruendung London=3.00:
-;   Maximaler Profit bei DD<=30% (Nutzerziel). PF=1.167 akzeptabel bei
-;   explizit hohem Risikoappetit. Staerkste Gewinnkombination im 4788-Pass-Grid.
-
+; Finale validierte Kennzahlen (10k EUR, 2020.01.01-2026.09.05):
+;   DipBuy=23.0 / Overlap=1.5 / London=3.0 / AtrStopMult=1.25
+;   Profit:        ~168% (2.107%/Mo) ueber 80 Monate
+;   Balance-DD:    ~16%  (Limit: 30%)
+;   Max. Tages-DD: 7.90% (6 Tage >=5% in 1052 Handelstagen)
+;   Margin Level:  ~109% (kein Margin-Call-Risiko)
+;   PF:            1.25
 ;
-; InpMaxDailyLossPct=5.0: konservativer Tages-Kill-Switch fuer Eigengeld.
-;   Natuerliche Tages-DD aus Backtest noch nicht geprueft - per
-;   analyze_daily_dd.py nach Einzeltest validieren.
+; Begruendung Parameterwahl:
+;   Overlap=1.5: loest strukturelles Margin-Problem bei 1:20-1:30 Retail-Hebel.
+;   DipBuy=23.0: beste Profit/DD-Effizienz im Low-Overlap-Grid (DD<=30%).
+;   AtrStopMult=1.25: optimierter Stop fuer London-Breakout (+14% Profit).
+;   London=3.0: positiver Edge bestaetigt.
+;
+; InpMaxDailyLossPct=8.0: angepasst an natuerliche Tages-DD (max. 7.90%).
+;   Bei 5.0 wuerde Kill-Switch an 6 von 1052 Tagen ausloesen und Recovery-
+;   Trades blockieren. 8.0 bietet Schutz ohne die Strategie zu stoeren.
 ; InpMaxTotalDDPct=100 (deaktiviert): Guard-Design (permanentes Veto) wuerde
 ;   Strategie zerstoeren (s. ea.md / E8Challenge-Erfahrung). Schutz laeuft
 ;   ueber weiche Risk-Scaling (GetRiskScale 1.5%/3.0%).
-; InpMaxRiskPctPerTrade=12: muss >= DipBuy (8.0) sein - auf 12 gesetzt.
+; InpMaxRiskPctPerTrade=25: muss >= DipBuy (23.0) sein.
 ;
 ; ACHTUNG - vor Go-Live:
-;   - Tages-DD per analyze_daily_dd.py aus Einzeltest-Export validieren
-;   - GMT-Offset an IG-Markets-Broker anpassen (InpGmtOffsetWinter/Summer)
-;   - Symbol-Name bei IG Markets pruefen (XAUUSD oder Variante)
+;   - GMT-Offset an ActiveTrades-Broker anpassen (InpGmtOffsetWinter/Summer)
+;   - Symbol-Name bei ActiveTrades pruefen (XAUUSD oder Variante)
 ;   - Demo-Forward-Test min. 2-4 Wochen empfohlen (ea.md 8.5)
 ;
 InpUseDipBuyModule=true
@@ -34,12 +44,12 @@ InpAsiaConfirmBars=8
 InpAsiaAtrStopMult=1.5
 InpAsiaForceCloseGmtHour=-1
 InpUseLondonModule=true
-InpRiskPctLondonBreakout=3.00
+InpRiskPctLondonBreakout=3.0
 InpLondonRangeStartGmtHour=8
 InpLondonRangeEndGmtHour=13
 InpLondonEntryStartGmtHour=13
 InpLondonEntryEndGmtHour=14
-InpLondonAtrStopMult=1.0
+InpLondonAtrStopMult=1.25
 InpLondonRRMult=2.0
 InpLondonMinBreakoutAtrMult=0.0
 InpLondonDisableFriday=false
@@ -54,18 +64,18 @@ InpGmtOffsetWinter=2
 InpGmtOffsetSummer=3
 InpUseSpreadFilter=false
 InpMaxSpreadPoints=150
-InpRiskPctDipBuy=8.0
-InpRiskPctOverlap=10.0
+InpRiskPctDipBuy=23.0
+InpRiskPctOverlap=1.5
 InpRiskPctAsia=1.0
 InpMaxClusterRiskPct=50.0
 InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
 InpClusterCountForeign=true
 InpClusterNoSLBlocks=true
-InpMaxRiskPctPerTrade=12.0
+InpMaxRiskPctPerTrade=25.0
 InpMaxLotsPerTicket=20.0
 InpFrictionSLMult=15.0
 InpSlippageBufferPts=20.0
-InpMaxDailyLossPct=5.0
+InpMaxDailyLossPct=8.0
 InpMaxTotalDDPct=100.0
 InpPartialPct=50.0
 InpUseNewsFilter=false
