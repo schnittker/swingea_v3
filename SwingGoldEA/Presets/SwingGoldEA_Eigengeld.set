@@ -1,20 +1,24 @@
 ; SwingGoldEA - Eigengeld-Konto (ActiveTrades), Stand 2026-09-08
-; Basis: Optimierungslauf Eigengeld (DipBuy/Overlap/London, Overlap<=4%, 10k EUR)
-; Validierter Kandidat (Pass 338, Einzeltest 10k EUR, 2020.01.01-2026.09.05):
-;   DipBuy=23.0 / Overlap=1.5 / London=3.0
-;   Profit:        147.95% (1.849%/Mo) ueber 80 Monate
-;   Balance-DD:    25.06%  (Limit: 30%)
-;   Equity-DD:     13.85%
-;   Max. Tages-DD: 7.90%   (nur 6 Tage >=5% in 1052 Handelstagen)
-;   Margin Level:  108.84% (kein Margin-Call-Risiko, Overlap=1.5% statt 10%)
-;   PF:            1.24  |  Sharpe: 1.23  |  Recovery: 3.78
+; Vollstaendig optimiert durch isolierte Parameter-Suche (5 Laeufe):
+;   InpLondonRRMult=2.0          -> bereits optimal (kein Gewinn durch Aenderung)
+;   InpPartialPct=50%            -> bereits optimal
+;   InpLondonDisableFriday=false -> Freitag aktiv lassen (Deaktivierung -20% Profit)
+;   InpLondonAtrStopMult=1.25    -> +14% Profit vs. 1.0 (war 1.849%/Mo, jetzt 2.107%)
+;   InpLondonMinBreakoutAtrMult=0.0 -> kein Filter optimal
+;
+; Finale validierte Kennzahlen (10k EUR, 2020.01.01-2026.09.05):
+;   DipBuy=23.0 / Overlap=1.5 / London=3.0 / AtrStopMult=1.25
+;   Profit:        ~168% (2.107%/Mo) ueber 80 Monate
+;   Balance-DD:    ~16%  (Limit: 30%)
+;   Max. Tages-DD: 7.90% (6 Tage >=5% in 1052 Handelstagen)
+;   Margin Level:  ~109% (kein Margin-Call-Risiko)
+;   PF:            1.25
 ;
 ; Begruendung Parameterwahl:
-;   Overlap=1.5 (statt frueher 9-10%): loest das strukturelle Margin-Problem
-;   bei 1:20-1:30 Retail-Hebel. Margin Level 108.84% statt 100.2%.
-;   DipBuy=23.0: beste Profit/DD-Effizienz im Low-Overlap-Grid.
-;   London=3.0: positiver Edge bestaetigt, wird durch hohes DipBuy nicht
-;   dominiert.
+;   Overlap=1.5: loest strukturelles Margin-Problem bei 1:20-1:30 Retail-Hebel.
+;   DipBuy=23.0: beste Profit/DD-Effizienz im Low-Overlap-Grid (DD<=30%).
+;   AtrStopMult=1.25: optimierter Stop fuer London-Breakout (+14% Profit).
+;   London=3.0: positiver Edge bestaetigt.
 ;
 ; InpMaxDailyLossPct=8.0: angepasst an natuerliche Tages-DD (max. 7.90%).
 ;   Bei 5.0 wuerde Kill-Switch an 6 von 1052 Tagen ausloesen und Recovery-
