@@ -89,7 +89,6 @@ const bool   SWEEP_USE_TREND_FILTER    = false;
 const double SWEEP_ROUND_STEP          = 0.0;
 const double SWEEP_ROUND_TOLERANCE     = 1.0;
 const bool   SWEEP_USE_GS_FILTER       = false;
-const string SWEEP_GS_SYMBOL           = "XAGUSD";
 const int    SWEEP_GS_LOOKBACK         = 20;
 const double SWEEP_RISK_PCT            = 1.0;
 
@@ -198,6 +197,7 @@ input double InpRiskPctOverlap     = 1.0;   // Risiko % je Overlap-Trade
 input double InpRiskPctAsia        = 1.0;   // Risiko % je Asia-Range-Breakout-Trade
 input double InpMaxClusterRiskPct  = 3.0;   // Cluster-Gesamt-Deckel (strategies.md Teil F)
 input string InpMetalCluster       = "XAUUSD,XAGUSD,AUDUSD"; // Korrelations-Cluster
+input string InpSwGsSymbol         = "XAGUSD"; // Silber-Symbol (Sweep-G/S-Filter), Broker-Suffix/-Name ggf. anpassen
 input bool   InpClusterCountForeign = true; // Fremd-Magic-Positionen im Cluster mitzaehlen
 input bool   InpClusterNoSLBlocks  = true;  // Position ohne SL blockiert neue Trades
 input double InpMaxRiskPctPerTrade = 2.0;   // Max. Risiko % pro Trade (Lot-Kappung, kapitalunabhaengig)
@@ -592,7 +592,7 @@ int OnInit(void)
                    SWEEP_RECLAIM_BARS, SWEEP_COOLDOWN_BARS,
                    SWEEP_SESSION_RESTRICTED, SWEEP_USE_TREND_FILTER,
                    SWEEP_ROUND_STEP, SWEEP_ROUND_TOLERANCE,
-                   SWEEP_USE_GS_FILTER, SWEEP_GS_SYMBOL, SWEEP_GS_LOOKBACK, magicSweep);
+                   SWEEP_USE_GS_FILTER, InpSwGsSymbol, SWEEP_GS_LOOKBACK, magicSweep);
 
    g_slots[2].tracker.Configure(_Symbol, magicSweep);
    g_slots[2].exec.Configure(_Symbol, magicSweep,
