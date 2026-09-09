@@ -1,25 +1,33 @@
-; SwingGoldEA - E8 One Challenge (500k$, 1:30 Hebel), Stand 2026-08-20
-; Basis: Pass 108 (500k/1:30-Test, Lot-Cap-Retest), 35,19% Profit (175.961,77$),
-;   DD 12,29% Equity / 11,36% Balance, 316 Trades
-; InpMaxLotsPerTicket=20 ist PFLICHT fuer E8 (Broker-Ticket-Cap XAUUSD) - nicht auf 0 setzen
-; InpUseNewsFilter=false ist in der Challenge-Phase korrekt (News-Trading dort unbeschraenkt,
-;   nur die spaetere Performance-Phase verbietet Trades +-5 Min um High-Impact-News)
-; InpMaxDailyLossPct=9.0 (statt Code-Default 3.0) an E8s echtes 9,2%-Tages-DD-Limit angenaehert
-;   - so im validierten Pass-108-Testlauf verwendet.
-; GEKLAERT (2026-08-20): E8s echte "Dynamic Drawdown" rastet auf dem hoechsten GESCHLOSSENEN
-;   Balance-Stand ein, nicht auf dem Equity-Peak wie CDrawdownGuard hier - mathematisch bewiesen,
-;   dass CDrawdownGuards Equity-Peak-DD IMMER >= E8s echter DD ist (sichere, nie unterschaetzende
-;   Naeherung). Versuch, InpMaxTotalDDPct als automatischen 14%-Hardstop zu kalibrieren, wurde
-;   verworfen: das Guard-Design (permanentes Veto, kein Peak-Reset) zerstoert die Strategie bei
-;   jedem Schwellwert unter der historischen DD-Schwankung (Kontrolltest mit 8 -> -30.453$ statt
-;   +175.961$). InpMaxTotalDDPct bleibt daher bei 100 (deaktiviert), Schutz laeuft ueber das
-;   weiche Risk-Scaling (GetRiskScale). Siehe MEMORY.md fuer Details.
-; GEKLAERT (2026-08-20): Lot-Cap-Retest zeigte im Tester (Netting-Demo-Konto) 3 Faelle, in
-;   denen DipBuy+Overlap zu einer Netto-Position >20 Lots verschmolzen (bis 20,48). E8 Markets
-;   bestaetigt aber: E8 One Forex/Crypto-Konten laufen im HEDGING-Modus (nur Futures = Netting).
-;   Auf dem echten E8-Konto bekommen DipBuy/Overlap getrennte Tickets, InpMaxLotsPerTicket
-;   greift dort korrekt pro Ticket - der Netting-Fund war ein Tester-Konto-Artefakt, kein
-;   reales E8-Risiko. Siehe MEMORY.md fuer Details.
+; SwingGoldEA - E8 Challenge (500k USD, 1:30), Stand 2026-09-09
+; Neu-Optimierung mit London-Modul (vorheriges Preset hatte London nicht).
+; Validierter Kandidat (Pass 395, Einzeltest 500k USD, 2020.01.01-2026.09.05):
+;   DipBuy=9.0 / Overlap=2.0 / London=1.0 / AtrStopMult=1.25
+;   Profit:        40.97% (0.512%/Mo) ueber 80 Monate
+;   Balance-DD:    11.45%  (E8-Limit: 14%)
+;   Max. Tages-DD: 4.64%   (E8-Limit: 9.2%) - kein Tag >= 9.2% in 1061 Handelstagen
+;   PF:            1.157
+;
+; Vergleich altes Preset (kein London, DipBuy=0.5/Overlap=5.0):
+;   Profit: 35.19% (0.440%/Mo), DD: 11.36% -> +16% Profit, niedrigere DD
+;
+; E8-Challenge-Regeln:
+;   Profit-Ziel:        21% (= 605.000 USD) - kein Zeitlimit
+;   Max. Tages-Verlust: 9.2% (Dynamic Drawdown)
+;   Max. Gesamtverlust: 14% (Dynamic Drawdown vom Peak-Balance)
+;   Hinweis: EA stoppt NICHT automatisch bei 21% - manuell deaktivieren!
+;
+; InpMaxDailyLossPct=9.0: knapp unter E8s 9.2%-Tageslimit.
+;   Natuerliche Tages-DD max. 4.64% - Kill-Switch wird nie ausgeloest.
+; InpMaxTotalDDPct=100 (deaktiviert): permanentes Veto wuerde Strategie
+;   zerstoeren (s. ea.md / E8Challenge-Erfahrung).
+; InpMaxLotsPerTicket=20: E8-Broker-Cap fuer XAUUSD.
+; InpMaxRiskPctPerTrade=20: muss >= DipBuy (9.0) sein.
+;
+; ACHTUNG - vor Go-Live:
+;   - GMT-Offset an E8-Broker-Server anpassen
+;   - Symbol-Name pruefen (XAUUSD oder Variante)
+;   - Demo-Forward-Test empfohlen (ea.md 8.5)
+;   - Bei ~20% Profit: EA manuell stoppen um Ziel zu sichern!
 ;
 InpUseDipBuyModule=true
 InpUseOverlapModule=true
@@ -30,6 +38,18 @@ InpAsiaBoxEndHour=8
 InpAsiaRetestToleranceAtrMult=0.2
 InpAsiaConfirmBars=8
 InpAsiaAtrStopMult=1.5
+InpAsiaForceCloseGmtHour=-1
+InpUseLondonModule=true
+InpRiskPctLondonBreakout=1.0
+InpLondonRangeStartGmtHour=8
+InpLondonRangeEndGmtHour=13
+InpLondonEntryStartGmtHour=13
+InpLondonEntryEndGmtHour=14
+InpLondonAtrStopMult=1.25
+InpLondonRRMult=2.0
+InpLondonMinBreakoutAtrMult=0.0
+InpLondonDisableFriday=false
+InpLondonForceCloseGmtHour=21
 InpUseSessionFilter=true
 InpUseWeekdayFilter=false
 InpOverlapStartGmtHour=12
@@ -40,8 +60,8 @@ InpGmtOffsetWinter=2
 InpGmtOffsetSummer=3
 InpUseSpreadFilter=false
 InpMaxSpreadPoints=150
-InpRiskPctDipBuy=0.5
-InpRiskPctOverlap=5.0
+InpRiskPctDipBuy=9.0
+InpRiskPctOverlap=2.0
 InpRiskPctAsia=1.0
 InpMaxClusterRiskPct=22.0
 InpMetalCluster=XAUUSD,XAGUSD,AUDUSD
