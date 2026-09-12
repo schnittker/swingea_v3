@@ -305,16 +305,40 @@ public:
       m_d1Valid = false;
 
       double buf[];
-      if(CopyBuffer(m_emaSlowD1Handle, 0, 1, 1, buf) != 1) return false;
+      int copied;
+
+      copied = CopyBuffer(m_emaSlowD1Handle, 0, 1, 1, buf);
+      if(copied != 1)
+        {
+         PrintFormat("DEBUG EnsureD1: EmaSlow CopyBuffer copied=%d BarsCalc=%d err=%d",
+                     copied, BarsCalculated(m_emaSlowD1Handle), GetLastError());
+         return false;
+        }
       m_emaSlowD1 = buf[0];
 
-      if(CopyBuffer(m_emaMidD1Handle, 0, 1, 1, buf) != 1) return false;
+      copied = CopyBuffer(m_emaMidD1Handle, 0, 1, 1, buf);
+      if(copied != 1)
+        {
+         PrintFormat("DEBUG EnsureD1: EmaMid CopyBuffer copied=%d BarsCalc=%d err=%d",
+                     copied, BarsCalculated(m_emaMidD1Handle), GetLastError());
+         return false;
+        }
       m_emaMidD1 = buf[0];
 
-      if(CopyBuffer(m_atrD1Handle, 0, 1, 1, buf) != 1) return false;
+      copied = CopyBuffer(m_atrD1Handle, 0, 1, 1, buf);
+      if(copied != 1)
+        {
+         PrintFormat("DEBUG EnsureD1: Atr CopyBuffer copied=%d BarsCalc=%d err=%d",
+                     copied, BarsCalculated(m_atrD1Handle), GetLastError());
+         return false;
+        }
       m_atrD1 = buf[0];
 
-      if(m_atrD1 <= 0.0) return false;
+      if(m_atrD1 <= 0.0)
+        {
+         PrintFormat("DEBUG EnsureD1: Atr<=0 (%.5f)", m_atrD1);
+         return false;
+        }
 
       m_d1Valid = true;
       return true;
